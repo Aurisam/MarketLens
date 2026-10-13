@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:frame="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8">
+    <title>MarketLens</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+          rel="stylesheet">
+</head>
+<body>
+
+<h1>Welcome to MarketLens!</h1>
+
+<h3>Instruments</h3>
+
+{% for instrument in instruments %}
+
+    <h4>
+        {{ instrument.name }} ({{ instrument.symbol }})
+        — {{ instrument.instrument_type }}
+        — ${{ instrument.price|floatformat:3 }}
+    </h4>
+
+<div class="table-responsive mb-4">
+    <table class="table table-sm table-bordered table-hover align-middle bg-white">
+        <thead class="table-dark">
+            <tr>
+                <th>Timeframe</th>
+                <th>Trend</th>
+                <th>SMA 20</th>
+                <th>SMA 50</th>
+                <th>Vs SMA 20</th>
+                <th>Vs SMA 50</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for timeframe, analysis in instrument.sma.items %}
+                <tr>
+                    <td>{{ timeframe }}</td>
+
+                    {% if analysis %}
+                        <td>{{ analysis.trend }}</td>
+                        <td>{{ analysis.sma20|floatformat:2 }}</td>
+                        <td>{{ analysis.sma50|floatformat:2 }}</td>
+
+                        <td>
+                            {% if analysis.price_above_sma20 %}
+                                Above
+                            {% else %}
+                                Below
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {% if analysis.price_above_sma50 %}
+                                Above
+                            {% else %}
+                                Below
+                            {% endif %}
+                        </td>
+                    {% else %}
+                        <td colspan="5">Not enough data</td>
+                    {% endif %}
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <hr>
+
+{% endfor %}
+</div>
+</body>
+</html>
