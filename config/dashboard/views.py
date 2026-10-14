@@ -5,7 +5,8 @@ from .services import (get_instrument_price,
                        get_multi_timeframe_sma,
                        get_multi_timeframe_rsi,
                        get_timeframe_signal,
-                       get_overall_signal)
+                       get_overall_signal,
+                       get_signal_consensus)
 
 
 def home(request):
@@ -36,6 +37,9 @@ def home(request):
                     timeframe,
                     "No data"
                 )
+        instrument.signal_consensus = get_signal_consensus(
+            instrument.signals
+        )
 
     return render(request,
                   'dashboard/home.html',

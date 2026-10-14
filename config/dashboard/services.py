@@ -1,26 +1,50 @@
 import requests, time
 
 
+
 def get_crypto_price(symbol):
     url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}USDT"
-    response = requests.get(url)
-    data = response.json()
-    return data['price']
+
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        if not isinstance(data, dict) or "price" not in data:
+            print("Binance returned an unexpected price response.")
+            return None
+
+        return float(data["price"])
+
+    except (requests.RequestException, ValueError, TypeError) as error:
+        print(f"Binance price API error: {error}")
+        return None
+
 
 
 def get_hyperliquid_price(symbol):
     url = "https://api.hyperliquid.xyz/info"
-    payload = {"type": 'allMids',
-               "dex": "",
-               }
-    response = requests.post(url,
-                             json=payload,
-                             headers={"Content-Type": "application/json"},
-                             timeout=10,
-                             )
+    payload = {"type": "allMids", "dex": ""}
 
-    data = response.json()
-    return data[symbol]
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if not isinstance(data, dict) or symbol not in data:
+            print(f"Hyperliquid price unavailable for {symbol}.")
+            return None
+
+        return float(data[symbol])
+
+    except (requests.RequestException, ValueError, TypeError) as error:
+        print(f"Hyperliquid price API error: {error}")
+        return None
 
 
 def get_instrument_price(instrument):
@@ -33,28 +57,39 @@ def get_instrument_price(instrument):
     return None
 
 
+
 def get_binance_candles(symbol, interval="1h", limit=100):
     url = "https://api.binance.com/api/v3/klines"
-
     params = {
         "symbol": f"{symbol}USDT",
         "interval": interval,
         "limit": limit,
     }
 
-    response = requests.get(
-        url,
-        params=params,
-        timeout=10,
-    )
+    try:
+        response = requests.get(
+            url,
+            params=params,
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
 
-    data = response.json()
+    except (requests.RequestException, ValueError) as error:
+        print(f"Binance candles API error: {error}")
+        return []
+
+    if not isinstance(data, list):
+        print("Binance returned an unexpected response.")
+        return []
+
     return data
+
+
 
 
 def get_hyperliquid_candles(symbol, interval="1h", limit=100):
     url = "https://api.hyperliquid.xyz/info"
-
     end_time = int(time.time() * 1000)
 
     payload = {
@@ -64,16 +99,25 @@ def get_hyperliquid_candles(symbol, interval="1h", limit=100):
             "interval": interval,
             "startTime": 0,
             "endTime": end_time,
-        }
+        },
     }
 
-    response = requests.post(
-        url,
-        json=payload,
-        timeout=10,
-    )
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
 
-    data = response.json()
+    except (requests.RequestException, ValueError) as error:
+        print(f"Hyperliquid candles API error: {error}")
+        return []
+
+    if not isinstance(data, list):
+        print("Hyperliquid returned an unexpected response.")
+        return []
 
     return data[-limit:]
 
@@ -338,6 +382,20 @@ def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
         else:
             factors.append("RSI neutral")
 
+    indicators_available = sum([
+        trend in ["Uptrend", "Downtrend", "Sideways"],
+        bool(sma_analysis),
+        bool(rsi_analysis),
+    ])
+
+    if indicators_available < 2:
+        return {
+            "score": None,
+            "signal": "Insufficient data",
+            "factors": factors,
+            "indicators_available": indicators_available,
+        }
+
     if score >= 2:
         signal = "Bullish"
     elif score <= -2:
@@ -349,6 +407,7 @@ def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
         "score": score,
         "signal": signal,
         "factors": factors,
+        "indicators_available": indicators_available,
     }
 
 
@@ -391,4 +450,39 @@ def get_overall_signal(timeframe_signals):
         "score": score,
         "signal": signal,
         "timeframes_used": total_weight,
+    }
+
+def get_signal_consensus(timeframe_signals):
+    valid_signals = [
+        data["signal"]
+        for data in timeframe_signals.values()
+        if data and data.get("signal") in [
+            "Bullish", "Bearish", "Neutral"
+        ]
+    ]
+
+    bullish = valid_signals.count("Bullish")
+    bearish = valid_signals.count("Bearish")
+    neutral = valid_signals.count("Neutral")
+    total = len(valid_signals)
+
+    if total == 0:
+        alignment = "No data"
+    elif bullish == total or bearish == total:
+        alignment = "Full agreement"
+    elif bullish > bearish and bullish > neutral:
+        alignment = "Bullish majority, some disagreement"
+    elif bearish > bullish and bearish > neutral:
+        alignment = "Bearish majority, some disagreement"
+    elif bullish > 0 and bearish > 0:
+        alignment = "Conflicting signals"
+    else:
+        alignment = "Mostly neutral"
+
+    return {
+        "alignment": alignment,
+        "bullish_count": bullish,
+        "bearish_count": bearish,
+        "neutral_count": neutral,
+        "timeframes_analyzed": total,
     }
