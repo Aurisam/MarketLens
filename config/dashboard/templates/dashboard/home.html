@@ -1,75 +1,126 @@
+{% load static %}
 <!DOCTYPE html>
-<html lang="en" xmlns:frame="http://www.w3.org/1999/xhtml">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MarketLens</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
           rel="stylesheet">
 </head>
-<body>
+<body class="bg-light">
 
-<h1>Welcome to MarketLens!</h1>
+<div class="container py-4">
+    <h1 class="mb-4">MarketLens</h1>
 
-<h3>Instruments</h3>
+    <div class="row g-4">
+        {% for instrument in instruments %}
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
 
-{% for instrument in instruments %}
+                    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+                        <div>
+                            <h4 class="mb-1">
+                                {{ instrument.name }} ({{ instrument.symbol }})
+                            </h4>
+                            <span class="text-muted">
+                                {{ instrument.instrument_type|title }}
+                            </span>
+                        </div>
 
-    <h4>
-        {{ instrument.name }} ({{ instrument.symbol }})
-        — {{ instrument.instrument_type }}
-        — ${{ instrument.price|floatformat:3 }}
-    </h4>
-
-<div class="table-responsive mb-4">
-    <table class="table table-sm table-bordered table-hover align-middle bg-white">
-        <thead class="table-dark">
-            <tr>
-                <th>Timeframe</th>
-                <th>Trend</th>
-                <th>SMA 20</th>
-                <th>SMA 50</th>
-                <th>Vs SMA 20</th>
-                <th>Vs SMA 50</th>
-            </tr>
-        </thead>
-
-        <tbody>
-            {% for timeframe, analysis in instrument.sma.items %}
-                <tr>
-                    <td>{{ timeframe }}</td>
-
-                    {% if analysis %}
-                        <td>{{ analysis.trend }}</td>
-                        <td>{{ analysis.sma20|floatformat:2 }}</td>
-                        <td>{{ analysis.sma50|floatformat:2 }}</td>
-
-                        <td>
-                            {% if analysis.price_above_sma20 %}
-                                Above
+                        <h4 class="mb-0">
+                            {% if instrument.price_available %}
+                                ${{ instrument.price|floatformat:2 }}
                             {% else %}
-                                Below
+                                Price unavailable
                             {% endif %}
-                        </td>
+                        </h4>
+                    </div>
 
-                        <td>
-                            {% if analysis.price_above_sma50 %}
-                                Above
+                    <p class="small text-muted">
+                        {% if instrument.data_updated_at %}
+                            Last full update: {{ instrument.data_updated_at|date:"Y-m-d H:i" }} UTC.
+                        {% else %}
+                            Waiting for the first full data update.
+                        {% endif %}
+                        {% if instrument.data_is_stale %}
+                            <span class="text-warning">Data update is overdue.</span>
+                        {% endif %}
+                        {% if instrument.price_updated_at %}
+                            Price checked: {{ instrument.price_updated_at|date:"Y-m-d H:i" }} UTC.
+                        {% endif %}
+                    </p>
+
+                    <div class="d-flex flex-wrap gap-2 my-3">
+                        <span class="badge text-bg-secondary">
+                            Overall: {{ instrument.overall_signal.signal }}
+                        </span>
+
+                        {% for timeframe, analysis in instrument.rsi.items %}
+                        <span class="badge text-bg-info">
+                            {{ timeframe }} RSI:
+                            {% if analysis %}
+                                {{ analysis.rsi }}
                             {% else %}
-                                Below
+                                N/A
                             {% endif %}
-                        </td>
-                    {% else %}
-                        <td colspan="5">Not enough data</td>
-                    {% endif %}
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                        </span>
+                        {% endfor %}
+                    </div>
 
-    <hr>
+                    <hr>
 
-{% endfor %}
+                    <div class="btn-group btn-group-sm mb-3" role="group">
+                        {% for timeframe in instrument.chart_data %}
+                        <button type="button"
+                                class="btn btn-outline-primary{% if forloop.first %} active{% endif %}"
+                                onclick="changeTimeframe({{ forloop.parentloop.counter }}, '{{ timeframe }}', this)">
+                            {{ timeframe }}
+                        </button>
+                        {% endfor %}
+                    </div>
+
+                    <h6>Price</h6>
+                    <div style="height: 260px;">
+
+                        <canvas id="price-chart-{{ forloop.counter }}"
+                                {% for timeframe, chart in instrument.chart_data.items %}
+                                data-chart-{{ timeframe }}-labels="{{ chart.labels|join:',' }}"
+                                data-chart-{{ timeframe }}-prices="{{ chart.prices|join:',' }}"
+                                data-chart-{{ timeframe }}-sma20="{{ chart.sma20|join:',' }}"
+                                data-chart-{{ timeframe }}-sma50="{{ chart.sma50|join:',' }}"
+                                {% endfor %}>
+                        </canvas>
+
+                    </div>
+
+                    <h6 class="mt-4">RSI (14)</h6>
+                    <div style="height: 150px;">
+
+                        <canvas id="rsi-chart-{{ forloop.counter }}"
+                                {% for timeframe, chart in instrument.chart_data.items %}
+                                data-chart-{{ timeframe }}-labels="{{ chart.labels|join:',' }}"
+                                data-chart-{{ timeframe }}-rsi="{{ chart.rsi|join:',' }}"
+                                {% endfor %}>
+                        </canvas>
+
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <p>No instruments added yet.</p>
+        </div>
+        {% endfor %}
+    </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script src="{% static 'dashboard/charts.js' %}?v=2"></script>
 </body>
 </html>

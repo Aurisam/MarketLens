@@ -1,12 +1,21 @@
-import requests, time
+import math
+import time
+import requests
+from django.core.cache import cache
+from urllib.parse import quote
 
+BINANCE_API_URL = "https://api.binance.com/api/v3"
+HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz/info"
+API_TIMEOUT_SECONDS = 10
 
 
 def get_crypto_price(symbol):
-    url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}USDT"
+    """Return the Binance price in USDT, or None if unavailable."""
+    url = f"{BINANCE_API_URL}/ticker/price"
+    params = {"symbol": f"{symbol}USDT"}
 
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, params=params, timeout=API_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
 
@@ -21,17 +30,16 @@ def get_crypto_price(symbol):
         return None
 
 
-
 def get_hyperliquid_price(symbol):
-    url = "https://api.hyperliquid.xyz/info"
+    """Return the Hyperliquid midpoint price, or None if unavailable."""
     payload = {"type": "allMids", "dex": ""}
 
     try:
         response = requests.post(
-            url,
+            HYPERLIQUID_API_URL,
             json=payload,
             headers={"Content-Type": "application/json"},
-            timeout=10,
+            timeout=API_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         data = response.json()
@@ -47,19 +55,88 @@ def get_hyperliquid_price(symbol):
         return None
 
 
+def group_four_hour_candles(hourly_candles):
+    grouped = []
+    hour = 60 * 60 * 1000
+    previous_time = None
+    for candle in hourly_candles:
+        opened = candle["open_time"]
+        # An overnight gap starts a new session, even after a short trading day.
+        if not grouped or opened - previous_time > hour or opened - grouped[-1]["open_time"] >= 4 * hour:
+            grouped.append(candle.copy())
+        else:
+            group = grouped[-1]
+            group["high"] = max(group["high"], candle["high"])
+            group["low"] = min(group["low"], candle["low"])
+            group["close"] = candle["close"]
+        previous_time = opened
+    return grouped
+
+
+def get_stock_candles(symbol, interval):
+    """Fetch stock and ETF candles from Yahoo Finance."""
+    if interval == "4h":
+        return group_four_hour_candles(get_stock_candles(symbol, "1h"))
+
+    ranges = {"1h": "3mo", "1d": "6mo"}
+    if interval not in ranges:
+        return []
+
+    cache_key = f"stock-candles:{symbol}:{interval}"
+    candles = cache.get(cache_key)
+    if candles is not None:
+        return candles
+
+    try:
+        response = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(symbol, safe='')}",
+            params={"interval": interval, "range": ranges[interval]},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=API_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        result = response.json()["chart"]["result"][0]
+        prices = result["indicators"]["quote"][0]
+        candles = []
+        for index, timestamp in enumerate(result["timestamp"]):
+            candles.append({
+                "open_time": timestamp * 1000,
+                "open": prices["open"][index],
+                "high": prices["high"][index],
+                "low": prices["low"][index],
+                "close": prices["close"][index],
+            })
+        candles = validate_candles(candles)
+    except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
+        candles = []
+
+    cache.set(cache_key, candles, timeout=300 if candles else 30)
+    return candles
+
+
+def get_instrument_timeframes(instrument):
+    return ["1h", "4h", "1d"]
+
+
 def get_instrument_price(instrument):
+    """Choose the price API using the instrument’s saved data source."""
     if instrument.data_source == "Hyperliquid":
         return get_hyperliquid_price(instrument.symbol)
 
-    elif instrument.data_source == "Binance":
+    if instrument.data_source == "Binance":
         return get_crypto_price(instrument.symbol)
+
+    if instrument.data_source == "YahooFinance":
+        candles = get_stock_candles(instrument.symbol, "1h")
+        if candles:
+            return candles[-1]["close"]
 
     return None
 
 
-
 def get_binance_candles(symbol, interval="1h", limit=100):
-    url = "https://api.binance.com/api/v3/klines"
+    """Fetch raw Binance candles. Return an empty list on API failure."""
+    url = f"{BINANCE_API_URL}/klines"
     params = {
         "symbol": f"{symbol}USDT",
         "interval": interval,
@@ -70,7 +147,7 @@ def get_binance_candles(symbol, interval="1h", limit=100):
         response = requests.get(
             url,
             params=params,
-            timeout=10,
+            timeout=API_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         data = response.json()
@@ -86,11 +163,10 @@ def get_binance_candles(symbol, interval="1h", limit=100):
     return data
 
 
-
-
 def get_hyperliquid_candles(symbol, interval="1h", limit=100):
-    url = "https://api.hyperliquid.xyz/info"
-    end_time = int(time.time() * 1000)
+    """Fetch raw Hyperliquid candles and keep the requested last candles."""
+    # Hyperliquid expects timestamps in milliseconds.
+    end_time_ms = int(time.time() * 1000)
 
     payload = {
         "type": "candleSnapshot",
@@ -98,15 +174,15 @@ def get_hyperliquid_candles(symbol, interval="1h", limit=100):
             "coin": symbol,
             "interval": interval,
             "startTime": 0,
-            "endTime": end_time,
+            "endTime": end_time_ms,
         },
     }
 
     try:
         response = requests.post(
-            url,
+            HYPERLIQUID_API_URL,
             json=payload,
-            timeout=10,
+            timeout=API_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         data = response.json()
@@ -122,16 +198,9 @@ def get_hyperliquid_candles(symbol, interval="1h", limit=100):
     return data[-limit:]
 
 
-def get_formatted_hyperliquid_candles(
-        symbol,
-        interval="1h",
-        limit=100):
-
-    candles = get_hyperliquid_candles(
-        symbol,
-        interval,
-        limit
-    )
+def get_formatted_hyperliquid_candles(symbol, interval="1h", limit=100):
+    """Convert Hyperliquid field names to the format used by the dashboard."""
+    candles = get_hyperliquid_candles(symbol, interval=interval, limit=limit)
 
     formatted_candles = []
 
@@ -149,15 +218,9 @@ def get_formatted_hyperliquid_candles(
     return formatted_candles
 
 
-def get_formatted_binance_candles(symbol,
-                                  interval="1h",
-                                  limit=100):
-
-    candles = get_binance_candles(
-        symbol,
-        interval,
-        limit
-    )
+def get_formatted_binance_candles(symbol, interval="1h", limit=100):
+    """Convert Binance list positions to named dashboard fields."""
+    candles = get_binance_candles(symbol, interval=interval, limit=limit)
 
     formatted_candles = []
 
@@ -175,26 +238,26 @@ def get_formatted_binance_candles(symbol,
     return formatted_candles
 
 
-def get_instrument_candles(
-    instrument,
-    interval="1h",
-    limit=100
-):
+def get_instrument_candles(instrument, interval="1h", limit=100):
+    """Fetch, format, and validate candles from the saved data source."""
+    if instrument.data_source == "YahooFinance":
+        return get_stock_candles(instrument.symbol, interval)[-limit:]
     if instrument.data_source == "Binance":
-        return get_formatted_binance_candles(
+        candles = get_formatted_binance_candles(
             instrument.symbol,
             interval=interval,
-            limit=limit
+            limit=limit,
         )
-
     elif instrument.data_source == "Hyperliquid":
-        return get_formatted_hyperliquid_candles(
+        candles = get_formatted_hyperliquid_candles(
             instrument.symbol,
             interval=interval,
-            limit=limit
+            limit=limit,
         )
+    else:
+        return []
 
-    return []
+    return validate_candles(candles)
 
 
 def get_simple_trend(candles):
@@ -213,21 +276,6 @@ def get_simple_trend(candles):
     return "Sideways"
 
 
-def get_multi_timeframe_trends(instrument):
-    timeframes = ["1h", "4h", "1d"]
-
-    trends = {}
-
-    for timeframe in timeframes:
-        candles = get_instrument_candles(
-            instrument,
-            interval=timeframe
-        )
-
-        trends[timeframe] = get_simple_trend(candles)
-
-    return trends
-
 def calculate_sma(candles, period):
     if len(candles) < period:
         return None
@@ -238,6 +286,7 @@ def calculate_sma(candles, period):
         closes.append(candle["close"])
 
     return sum(closes) / period
+
 
 def get_sma_analysis(candles):
     if len(candles) < 50:
@@ -255,21 +304,6 @@ def get_sma_analysis(candles):
         "price_above_sma50": current_close > sma50,
     }
 
-def get_multi_timeframe_sma(instrument):
-    timeframes = ["1h", "4h", "1d"]
-
-    sma_data = {}
-
-    for timeframe in timeframes:
-        candles = get_instrument_candles(
-            instrument,
-            interval=timeframe,
-            limit=100
-        )
-
-        sma_data[timeframe] = get_sma_analysis(candles)
-
-    return sma_data
 
 def calculate_rsi(candles, period=14):
     if len(candles) < period + 1:
@@ -290,12 +324,12 @@ def calculate_rsi(candles, period=14):
 
     for i in range(period, len(changes)):
         avg_gain = (
-            avg_gain * (period - 1) + gains[i]
-        ) / period
+                           avg_gain * (period - 1) + gains[i]
+                   ) / period
 
         avg_loss = (
-            avg_loss * (period - 1) + losses[i]
-        ) / period
+                           avg_loss * (period - 1) + losses[i]
+                   ) / period
 
     if avg_loss == 0:
         return 100 if avg_gain > 0 else 50
@@ -305,6 +339,7 @@ def calculate_rsi(candles, period=14):
     rsi = 100 - (100 / (1 + rs))
 
     return rsi
+
 
 def get_rsi_analysis(candles):
     rsi = calculate_rsi(candles)
@@ -326,20 +361,6 @@ def get_rsi_analysis(candles):
         "condition": condition,
     }
 
-def get_multi_timeframe_rsi(instrument):
-    timeframes = ["1h", "4h", "1d"]
-    rsi_data = {}
-
-    for timeframe in timeframes:
-        candles = get_instrument_candles(
-            instrument,
-            interval=timeframe,
-            limit=100,
-        )
-
-        rsi_data[timeframe] = get_rsi_analysis(candles)
-
-    return rsi_data
 
 def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
     score = 0
@@ -452,6 +473,7 @@ def get_overall_signal(timeframe_signals):
         "timeframes_used": total_weight,
     }
 
+
 def get_signal_consensus(timeframe_signals):
     valid_signals = [
         data["signal"]
@@ -485,4 +507,143 @@ def get_signal_consensus(timeframe_signals):
         "bearish_count": bearish,
         "neutral_count": neutral,
         "timeframes_analyzed": total,
+    }
+
+
+def validate_candles(candles):
+    if not isinstance(candles, list):
+        return []
+
+    valid_candles = []
+
+    for candle in candles:
+        if not isinstance(candle, dict):
+            continue
+
+        try:
+            open_price = float(candle["open"])
+            high_price = float(candle["high"])
+            low_price = float(candle["low"])
+            close_price = float(candle["close"])
+            open_time = int(candle["open_time"])
+
+        except (KeyError, TypeError, ValueError, OverflowError):
+            continue
+
+        prices = [
+            open_price,
+            high_price,
+            low_price,
+            close_price,
+        ]
+
+        if not all(math.isfinite(price) for price in prices):
+            continue
+
+        if min(prices) <= 0:
+            continue
+
+        if low_price > min(open_price, close_price):
+            continue
+
+        if high_price < max(open_price, close_price):
+            continue
+
+        if low_price > high_price:
+            continue
+
+        if open_time < 0:
+            continue
+
+        valid_candles.append({
+            "open_time": open_time,
+            "open": open_price,
+            "high": high_price,
+            "low": low_price,
+            "close": close_price,
+        })
+
+    valid_candles.sort(key=lambda candle: candle["open_time"])
+    return valid_candles
+
+
+def get_chart_data(candles):
+    if not candles:
+        return {
+            "labels": [],
+            "prices": [],
+            "sma20": [],
+            "sma50": [],
+            "rsi": [],
+        }
+
+    closes = [candle["close"] for candle in candles]
+    labels = [candle["open_time"] for candle in candles]
+
+    sma20 = []
+    sma50 = []
+
+    for i in range(len(closes)):
+        if i >= 19:
+            sma20.append(sum(closes[i - 19:i + 1]) / 20)
+        else:
+            sma20.append(None)
+
+        if i >= 49:
+            sma50.append(sum(closes[i - 49:i + 1]) / 50)
+        else:
+            sma50.append(None)
+
+    rsi_values = [None] * len(closes)
+    period = 14
+
+    if len(closes) > period:
+        changes = [
+            closes[i] - closes[i - 1]
+            for i in range(1, len(closes))
+        ]
+
+        gains = [max(change, 0) for change in changes]
+        losses = [abs(min(change, 0)) for change in changes]
+
+        avg_gain = sum(gains[:period]) / period
+        avg_loss = sum(losses[:period]) / period
+
+        def calculate_rsi_value(gain, loss):
+            if loss == 0:
+                return 100 if gain > 0 else 50
+
+            rs = gain / loss
+            return 100 - (100 / (1 + rs))
+
+        rsi_values[period] = calculate_rsi_value(
+            avg_gain,
+            avg_loss,
+        )
+
+        for i in range(period + 1, len(closes)):
+            change_index = i - 1
+
+            avg_gain = (
+                               avg_gain * (period - 1) + gains[change_index]
+                       ) / period
+
+            avg_loss = (
+                               avg_loss * (period - 1) + losses[change_index]
+                       ) / period
+
+            rsi_values[i] = calculate_rsi_value(
+                avg_gain,
+                avg_loss,
+            )
+
+    return {
+        "labels": labels,
+        "prices": closes,
+        "sma20": sma20,
+        "sma50": sma50,
+        "rsi": [
+            round(value, 2) if value is not None else None
+            for value in rsi_values
+        ],
     }
