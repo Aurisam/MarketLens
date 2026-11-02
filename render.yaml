@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: marketlens
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python config/manage.py collectstatic --noinput
+    startCommand: cd config && python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --access-logfile -
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.12
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        sync: false

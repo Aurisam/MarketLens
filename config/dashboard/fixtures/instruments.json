@@ -1,0 +1,52 @@
+[
+  {
+    "model": "dashboard.instrument",
+    "pk": 1,
+    "fields": {
+      "name": "Bitcoin",
+      "symbol": "BTC",
+      "instrument_type": "Crypto",
+      "data_source": "Binance"
+    }
+  },
+  {
+    "model": "dashboard.instrument",
+    "pk": 2,
+    "fields": {
+      "name": "Hyperliquid",
+      "symbol": "HYPE",
+      "instrument_type": "Crypto",
+      "data_source": "Hyperliquid"
+    }
+  },
+  {
+    "model": "dashboard.instrument",
+    "pk": 3,
+    "fields": {
+      "name": "Solana",
+      "symbol": "SOL",
+      "instrument_type": "Crypto",
+      "data_source": "Binance"
+    }
+  },
+  {
+    "model": "dashboard.instrument",
+    "pk": 4,
+    "fields": {
+      "name": "NVIDIA",
+      "symbol": "NVDA",
+      "instrument_type": "Stock",
+      "data_source": "YahooFinance"
+    }
+  },
+  {
+    "model": "dashboard.instrument",
+    "pk": 5,
+    "fields": {
+      "name": "S&P500",
+      "symbol": "SPY",
+      "instrument_type": "ETF",
+      "data_source": "YahooFinance"
+    }
+  }
+]
