@@ -13,6 +13,9 @@ MarketLens – internetinė akcijų, ETF ir kriptovaliutų stebėjimo sistema. J
 - RSI 14 rodiklis ir jo būsenos vertinimas.
 - Kainos krypties, atskirų intervalų ir bendras techninis signalas.
 - Duomenų patikros laikas ir vėluojančio atnaujinimo žymėjimas.
+- Trijų skaitmenų po kablelio tikslumas žvakių kainų užuominose.
+- Grafikų priartinimas, atitolinimas, slinkimas ir pradinio vaizdo atkūrimas.
+- Tamsi ir šviesi tema su naršyklėje išsaugomu pasirinkimu.
 - Instrumentų valdymas per Django administravimo sąsają.
 
 ## Duomenų šaltiniai
@@ -40,9 +43,11 @@ Instrumento, intervalo ir žvakės pradžios laiko derinys yra unikalus. Pakarto
 
 Grafikų X ašyje pateikiamas žvakės pradžios laikas vartotojo naršyklės laiko juostoje. Taip pat vietiniu laiku rodomi duomenų patikros laikai. Laiko juosta nustatoma automatiškai, naudojant naršyklės Intl API. Duomenų patikros laikas saugomas atskirai. Praėjus daugiau nei 30 minučių nuo paskutinio sėkmingo pilno atnaujinimo, puslapyje parodoma vėlavimo žyma.
 
-Atidarytas puslapis kas minutę gauna atnaujintas instrumentų korteles per Django maršrutą `/data/`. Kainų grafikai, RSI ir signalai atnaujinami neperkraunant viso puslapio. Pasirinktas instrumento intervalas išsaugomas pagal instrumento ID. Nepavykus užklausai, lieka ankstesni grafikai ir kitą minutę bandoma dar kartą. Kol naršyklės kortelė paslėpta, periodinės užklausos sustabdomos.
+Atidarytas puslapis kas minutę gauna atnaujintas instrumentų korteles per Django maršrutą `/data/`. Kainų grafikai, RSI ir signalai atnaujinami neperkraunant viso puslapio. Pasirinktas instrumento intervalas ir priartinta grafikų sritis išsaugomi pagal instrumento ID. Nepavykus užklausai, lieka ankstesni grafikai ir kitą minutę bandoma dar kartą. Kol naršyklės kortelė paslėpta, periodinės užklausos sustabdomos.
 
 Puslapio atnaujinimas ir rinkos duomenų surinkimas yra atskiri procesai. Puslapis tikrina DB kas minutę, o GitHub Actions rinkos duomenų atnaujinimas suplanuotas kas 15 minučių.
+
+Grafikų priartinimą ir slinkimą valdo Chart.js zoom papildinys. Priartinimo mygtukai keičia kainos ir RSI grafikų laiko ašį. Temos pasirinkimas saugomas naršyklės localStorage. Pirmą kartą tema parenkama pagal naršyklės sistemos spalvų nuostatą. Pasikeitus temai, pritaikomos ir grafikų spalvos.
 
 ## Duomenų modeliai
 

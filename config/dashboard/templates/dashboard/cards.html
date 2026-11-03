@@ -67,6 +67,16 @@
                         {% endfor %}
                     </div>
 
+                    <div class="btn-group btn-group-sm mb-2 ms-2" role="group" aria-label="Chart zoom">
+                        <button type="button" class="btn btn-outline-secondary"
+                                onclick="zoomCharts({{ instrument.id }}, 1.25)" aria-label="Zoom in">+</button>
+                        <button type="button" class="btn btn-outline-secondary"
+                                onclick="zoomCharts({{ instrument.id }}, 0.8)" aria-label="Zoom out">−</button>
+                        <button type="button" class="btn btn-outline-secondary"
+                                onclick="resetChartZoom({{ instrument.id }})">Reset zoom</button>
+                    </div>
+                    <p class="small text-muted">Ctrl + scroll to zoom. Shift + drag to pan. Pinch to zoom on touchscreens.</p>
+
                     <h6>Price (candlesticks)</h6>
                     <div style="height: 260px;">
 

@@ -5,14 +5,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MarketLens</title>
+    <script src="{% static 'dashboard/theme.js' %}"></script>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
           rel="stylesheet">
+    <style>
+        [data-bs-theme="dark"] .btn-outline-secondary {
+            --bs-btn-color: #dee2e6;
+            --bs-btn-hover-color: #fff;
+            --bs-btn-hover-bg: #495057;
+            --bs-btn-hover-border-color: #adb5bd;
+        }
+    </style>
 </head>
-<body class="bg-light">
+<body class="bg-body text-body">
 
 <div class="container py-4">
-    <h1 class="mb-4">MarketLens</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4 gap-3">
+        <h1 class="mb-0">MarketLens</h1>
+        <button id="theme-toggle" type="button" class="btn btn-outline-secondary"
+                onclick="toggleTheme()" aria-pressed="false">Dark mode</button>
+    </div>
 
     <p class="small text-muted">
         Times shown in <span id="time-zone"></span>.
@@ -27,7 +40,9 @@
 <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
 
-<script src="{% static 'dashboard/charts.js' %}?v=3"></script>
+<script src="{% static 'dashboard/charts.js' %}?v=4"></script>
 </body>
 </html>
