@@ -16,7 +16,3 @@ services:
         sync: false
       - key: DATABASE_URL_UNPOOLED
         sync: false
-      - key: DJANGO_ALLOWED_HOSTS
-        sync: false
-      - key: DJANGO_CSRF_TRUSTED_ORIGINS
-        sync: false
