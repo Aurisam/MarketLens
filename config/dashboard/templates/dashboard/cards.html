@@ -1,0 +1,107 @@
+    <div class="row g-4" id="instrument-cards">
+        {% for instrument in instruments %}
+        <div class="col-12">
+            <div class="card shadow-sm instrument-card">
+                <div class="card-body">
+
+                    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+                        <div>
+                            <h4 class="mb-1">
+                                {{ instrument.name }} ({{ instrument.symbol }})
+                            </h4>
+                            <span class="text-muted">
+                                {{ instrument.instrument_type|title }}
+                            </span>
+                        </div>
+
+                        <h4 class="mb-0">
+                            {% if instrument.price_available %}
+                                ${{ instrument.price|floatformat:2 }}
+                            {% else %}
+                                Price unavailable
+                            {% endif %}
+                        </h4>
+                    </div>
+
+                    <p class="small text-muted">
+                        {% if instrument.data_updated_at %}
+                            Last full update: <time data-local-time="{{ instrument.data_updated_at|date:'c' }}">{{ instrument.data_updated_at|date:"c" }}</time>.
+                        {% else %}
+                            Waiting for the first full data update.
+                        {% endif %}
+                        {% if instrument.data_is_stale %}
+                            <span class="text-warning">Data update is overdue.</span>
+                        {% endif %}
+                        {% if instrument.price_updated_at %}
+                            Price checked: <time data-local-time="{{ instrument.price_updated_at|date:'c' }}">{{ instrument.price_updated_at|date:"c" }}</time>.
+                        {% endif %}
+                    </p>
+
+                    <div class="d-flex flex-wrap gap-2 my-3">
+                        <span class="badge text-bg-secondary">
+                            Overall: {{ instrument.overall_signal.signal }}
+                        </span>
+
+                        {% for timeframe, analysis in instrument.rsi.items %}
+                        <span class="badge text-bg-info">
+                            {{ timeframe }} RSI:
+                            {% if analysis %}
+                                {{ analysis.rsi }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </span>
+                        {% endfor %}
+                    </div>
+
+                    <hr>
+
+                    <div class="btn-group btn-group-sm mb-3" role="group">
+                        {% for timeframe in instrument.chart_data %}
+                        <button type="button"
+                                class="btn btn-outline-primary{% if forloop.first %} active{% endif %}"
+                                data-timeframe="{{ timeframe }}"
+                                onclick="changeTimeframe({{ instrument.id }}, '{{ timeframe }}', this)">
+                            {{ timeframe }}
+                        </button>
+                        {% endfor %}
+                    </div>
+
+                    <h6>Price (candlesticks)</h6>
+                    <div style="height: 260px;">
+
+                        <canvas id="price-chart-{{ instrument.id }}"
+                                {% for timeframe, chart in instrument.chart_data.items %}
+                                data-chart-{{ timeframe }}-labels="{{ chart.labels|join:',' }}"
+                                data-chart-{{ timeframe }}-prices="{{ chart.prices|join:',' }}"
+                                data-chart-{{ timeframe }}-opens="{{ chart.opens|join:',' }}"
+                                data-chart-{{ timeframe }}-highs="{{ chart.highs|join:',' }}"
+                                data-chart-{{ timeframe }}-lows="{{ chart.lows|join:',' }}"
+                                data-chart-{{ timeframe }}-sma20="{{ chart.sma20|join:',' }}"
+                                data-chart-{{ timeframe }}-sma50="{{ chart.sma50|join:',' }}"
+                                {% endfor %}>
+                        </canvas>
+
+                    </div>
+
+                    <h6 class="mt-4">RSI (14)</h6>
+                    <div style="height: 150px;">
+
+                        <canvas id="rsi-chart-{{ instrument.id }}"
+                                {% for timeframe, chart in instrument.chart_data.items %}
+                                data-chart-{{ timeframe }}-labels="{{ chart.labels|join:',' }}"
+                                data-chart-{{ timeframe }}-rsi="{{ chart.rsi|join:',' }}"
+                                {% endfor %}>
+                        </canvas>
+
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <p>No instruments added yet.</p>
+        </div>
+        {% endfor %}
+    </div>

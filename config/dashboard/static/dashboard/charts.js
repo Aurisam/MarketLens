@@ -1,8 +1,23 @@
+const chartInstances = {};
+const selectedTimeframes = {};
+const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+});
+let refreshInProgress = false;
+
+function formatLocalTime(timestamp) {
+    return dateFormatter.format(new Date(timestamp));
+}
+
 function readNumbers(value) {
     if (!value) {
         return [];
     }
-
     return value.split(",").map(item => {
         if (item === "None" || item === "") {
             return null;
@@ -11,35 +26,32 @@ function readNumbers(value) {
     });
 }
 
-const chartInstances = {};
-
 function getChartValues(canvas, timeframe, field) {
-    const attributeName = `data-chart-${timeframe}-${field}`;
-    return readNumbers(canvas.getAttribute(attributeName));
+    return readNumbers(canvas.getAttribute(`data-chart-${timeframe}-${field}`));
 }
 
 function createCharts(id, timeframe = "1h") {
     const priceCanvas = document.getElementById(`price-chart-${id}`);
     const rsiCanvas = document.getElementById(`rsi-chart-${id}`);
-
     if (!priceCanvas || !rsiCanvas) {
         return;
     }
 
-    const labels = getChartValues(priceCanvas, timeframe, "labels");
+    const times = getChartValues(priceCanvas, timeframe, "labels");
     const prices = getChartValues(priceCanvas, timeframe, "prices");
+    const opens = getChartValues(priceCanvas, timeframe, "opens");
+    const highs = getChartValues(priceCanvas, timeframe, "highs");
+    const lows = getChartValues(priceCanvas, timeframe, "lows");
     const sma20 = getChartValues(priceCanvas, timeframe, "sma20");
     const sma50 = getChartValues(priceCanvas, timeframe, "sma50");
-    const rsiLabels = getChartValues(rsiCanvas, timeframe, "labels");
     const rsi = getChartValues(rsiCanvas, timeframe, "rsi");
-
-    // All providers supply candle opening times as Unix milliseconds.
-    function formatTime(timestamp) {
-        const isoTime = new Date(timestamp).toISOString();
-        return isoTime.slice(0, 10) + " " + isoTime.slice(11, 16);
-    }
-    const chartLabels = labels.map(formatTime);
-    const rsiChartLabels = rsiLabels.map(formatTime);
+    const candles = times.map((time, index) => ({
+        x: time,
+        o: opens[index],
+        h: highs[index],
+        l: lows[index],
+        c: prices[index]
+    }));
 
     if (chartInstances[id]) {
         chartInstances[id].price.destroy();
@@ -48,26 +60,24 @@ function createCharts(id, timeframe = "1h") {
 
     chartInstances[id] = {
         price: new Chart(priceCanvas, {
-            type: "line",
+            type: "candlestick",
             data: {
-                labels: chartLabels,
                 datasets: [
+                    {label: "Price", data: candles},
                     {
-                        label: "Price",
-                        data: prices,
-                        borderWidth: 2,
-                        pointRadius: 0
-                    },
-                    {
+                        type: "line",
                         label: "SMA 20",
-                        data: sma20,
+                        data: times.map((time, index) => ({x: time, y: sma20[index]})),
+                        borderColor: "#2563eb",
                         borderWidth: 1.5,
                         pointRadius: 0,
                         spanGaps: false
                     },
                     {
+                        type: "line",
                         label: "SMA 50",
-                        data: sma50,
+                        data: times.map((time, index) => ({x: time, y: sma50[index]})),
+                        borderColor: "#d97706",
                         borderWidth: 1.5,
                         pointRadius: 0,
                         spanGaps: false
@@ -77,32 +87,38 @@ function createCharts(id, timeframe = "1h") {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                interaction: {
-                    intersect: false,
-                    mode: "index"
+                animation: false,
+                interaction: {intersect: false, mode: "index"},
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            title(items) {
+                                return formatLocalTime(items[0].parsed.x);
+                            }
+                        }
+                    }
                 },
                 scales: {
                     x: {
-                        title: {display: true, text: "UTC"},
+                        type: "timeseries",
+                        title: {display: true, text: localTimeZone},
                         ticks: {
-                            maxTicksLimit: 8
+                            source: "data",
+                            maxTicksLimit: 8,
+                            major: {enabled: false},
+                            callback: formatLocalTime
                         }
-                    }
+                    },
+                    y: {type: "linear"}
                 }
             }
         }),
-
         rsi: new Chart(rsiCanvas, {
             type: "line",
             data: {
-                labels: rsiChartLabels,
+                labels: times.map(formatLocalTime),
                 datasets: [
-                    {
-                        label: "RSI 14",
-                        data: rsi,
-                        borderWidth: 2,
-                        pointRadius: 0
-                    },
+                    {label: "RSI 14", data: rsi, borderWidth: 2, pointRadius: 0},
                     {
                         label: "Overbought (70)",
                         data: rsi.map(() => 70),
@@ -120,16 +136,12 @@ function createCharts(id, timeframe = "1h") {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: false,
                 scales: {
-                    y: {
-                        min: 0,
-                        max: 100
-                    },
+                    y: {min: 0, max: 100},
                     x: {
-                        title: {display: true, text: "UTC"},
-                        ticks: {
-                            maxTicksLimit: 8
-                        }
+                        title: {display: true, text: localTimeZone},
+                        ticks: {maxTicksLimit: 8}
                     }
                 }
             }
@@ -138,16 +150,76 @@ function createCharts(id, timeframe = "1h") {
 }
 
 function changeTimeframe(id, timeframe, button) {
+    selectedTimeframes[id] = timeframe;
     createCharts(id, timeframe);
-
-    const buttonGroup = button.parentElement;
-    buttonGroup.querySelectorAll("button").forEach(timeframeButton => {
-        timeframeButton.classList.remove("active");
+    button.parentElement.querySelectorAll("button").forEach(timeframeButton => {
+        timeframeButton.classList.toggle("active", timeframeButton === button);
     });
-    button.classList.add("active");
 }
 
-document.querySelectorAll('[id^="price-chart-"]').forEach(canvas => {
-    const id = canvas.id.replace("price-chart-", "");
-    createCharts(id);
+function initializeCards() {
+    document.querySelectorAll("time[data-local-time]").forEach(element => {
+        element.textContent = formatLocalTime(element.dataset.localTime);
+    });
+
+    document.querySelectorAll('[id^="price-chart-"]').forEach(canvas => {
+        const id = canvas.id.replace("price-chart-", "");
+        const timeframe = selectedTimeframes[id] || "1h";
+        const card = canvas.closest(".instrument-card");
+        const button = card.querySelector(`[data-timeframe="${timeframe}"]`);
+        changeTimeframe(id, timeframe, button);
+    });
+}
+
+async function refreshDashboard() {
+    if (refreshInProgress || document.hidden) {
+        return;
+    }
+
+    refreshInProgress = true;
+    const status = document.getElementById("refresh-status");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    status.textContent = "Checking for updates...";
+
+    try {
+        const dashboard = document.getElementById("dashboard");
+        const response = await fetch(dashboard.dataset.refreshUrl, {
+            cache: "no-store",
+            signal: controller.signal
+        });
+        if (!response.ok) {
+            throw new Error("Dashboard request failed.");
+        }
+
+        const html = await response.text();
+        const page = new DOMParser().parseFromString(html, "text/html");
+        const newCards = page.getElementById("instrument-cards");
+        if (!newCards) {
+            throw new Error("Dashboard response is missing cards.");
+        }
+
+        Object.keys(chartInstances).forEach(id => {
+            chartInstances[id].price.destroy();
+            chartInstances[id].rsi.destroy();
+            delete chartInstances[id];
+        });
+        document.getElementById("instrument-cards").innerHTML = newCards.innerHTML;
+        initializeCards();
+        status.textContent = `Checked: ${formatLocalTime(Date.now())}. Auto refresh enabled.`;
+    } catch (error) {
+        status.textContent = "Auto refresh failed. Retrying in one minute.";
+    } finally {
+        clearTimeout(timeout);
+        refreshInProgress = false;
+    }
+}
+
+document.getElementById("time-zone").textContent = localTimeZone;
+initializeCards();
+setInterval(refreshDashboard, 60000);
+document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+        refreshDashboard();
+    }
 });

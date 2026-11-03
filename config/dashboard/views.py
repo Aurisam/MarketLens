@@ -2,6 +2,8 @@ from datetime import timedelta
 
 from django.shortcuts import render
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_GET
 
 from .models import Instrument
 from .services import (
@@ -16,7 +18,7 @@ from .services import (
 )
 
 
-def home(request):
+def get_dashboard_instruments():
     instruments = Instrument.objects.all()
 
     for instrument in instruments:
@@ -66,8 +68,15 @@ def home(request):
                     "No data",
                 )
 
-    return render(
-        request,
-        "dashboard/home.html",
-        {"instruments": instruments},
-    )
+    return instruments
+
+
+@require_GET
+def home(request):
+    return render(request, "dashboard/home.html", {"instruments": get_dashboard_instruments()})
+
+
+@never_cache
+@require_GET
+def dashboard_data(request):
+    return render(request, "dashboard/cards.html", {"instruments": get_dashboard_instruments()})

@@ -573,6 +573,9 @@ def get_chart_data(candles):
         return {
             "labels": [],
             "prices": [],
+            "opens": [],
+            "highs": [],
+            "lows": [],
             "sma20": [],
             "sma50": [],
             "rsi": [],
@@ -641,6 +644,9 @@ def get_chart_data(candles):
     return {
         "labels": labels,
         "prices": closes,
+        "opens": [candle["open"] for candle in candles],
+        "highs": [candle["high"] for candle in candles],
+        "lows": [candle["low"] for candle in candles],
         "sma20": sma20,
         "sma50": sma50,
         "rsi": [

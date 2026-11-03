@@ -86,7 +86,7 @@ class MarketDataTests(SimpleTestCase):
 class DashboardTemplateTests(SimpleTestCase):
     def test_each_instrument_has_its_own_buttons_and_chart_data(self):
         timeframes = ["1h", "4h", "1d"]
-        chart = {"labels": [1000], "prices": [12], "sma20": [None], "sma50": [None], "rsi": [None]}
+        chart = {"labels": [1000], "prices": [12], "opens": [10], "highs": [13], "lows": [9], "sma20": [None], "sma50": [None], "rsi": [None]}
         instrument = {
             "name": "Bitcoin", "symbol": "BTC", "instrument_type": "Crypto",
             "price_available": False,
@@ -94,7 +94,7 @@ class DashboardTemplateTests(SimpleTestCase):
             "chart_data": {timeframe: chart for timeframe in timeframes},
         }
         html = render_to_string("dashboard/home.html", {
-            "instruments": [instrument, instrument], "timeframes": timeframes,
+            "instruments": [dict(instrument, id=1), dict(instrument, id=2)], "timeframes": timeframes,
         })
 
         for instrument_id in [1, 2]:
@@ -104,6 +104,9 @@ class DashboardTemplateTests(SimpleTestCase):
             self.assertIn(f'id="rsi-chart-{instrument_id}"', html)
         self.assertEqual(html.count('class="btn btn-outline-primary active"'), 2)
         self.assertIn('data-chart-4h-prices="12"', html)
+        self.assertIn('data-chart-4h-opens="10"', html)
+        self.assertIn('data-chart-4h-highs="13"', html)
+        self.assertIn('data-chart-4h-lows="9"', html)
         self.assertIn('data-chart-1d-rsi="None"', html)
         self.assertIn('/static/dashboard/charts.js', html)
         self.assertIn("Price unavailable", html)
@@ -179,3 +182,21 @@ class StoredMarketDataTests(TestCase):
             response = self.client.get("/")
         self.assertContains(response, "Waiting for the first full data update.")
         self.assertContains(response, "Price unavailable")
+
+    def test_refresh_reads_new_database_values_without_market_api_calls(self):
+        with patch("requests.get", side_effect=AssertionError("Unexpected API request")), patch(
+            "requests.post", side_effect=AssertionError("Unexpected API request"),
+        ):
+            response = self.client.get("/data/")
+            self.assertContains(response, "Price unavailable")
+            self.instrument.last_price = 20
+            self.instrument.save(update_fields=["last_price"])
+            Candle.objects.create(instrument=self.instrument, interval="1h", **self.candles[0])
+            response = self.client.get("/data/")
+        self.assertContains(response, "$20.00")
+        self.assertContains(response, f'id="price-chart-{self.instrument.id}"')
+        self.assertContains(response, 'data-chart-1h-opens="10.0"')
+        self.assertContains(response, 'data-chart-1h-highs="12.0"')
+        self.assertNotContains(response, "<!DOCTYPE html>")
+        self.assertIn("no-store", response.headers["Cache-Control"])
+        self.assertEqual(self.client.post("/data/").status_code, 405)
