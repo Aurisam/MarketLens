@@ -14,17 +14,18 @@ concurrency:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
           cache: pip
       - run: pip install -r requirements.txt
       - name: Require the shared server database
         run: test -n "$DATABASE_URL"
-      - run: python config/manage.py update_market_data
+      - name: Update stored market data
+        run: python config/manage.py update_market_data

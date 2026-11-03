@@ -4,7 +4,8 @@ import requests
 from django.core.cache import cache
 from urllib.parse import quote
 
-BINANCE_API_URL = "https://api.binance.com/api/v3"
+# Binance's public market-data API supports prices and candles without an API key.
+BINANCE_API_URL = "https://data-api.binance.vision/api/v3"
 HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz/info"
 API_TIMEOUT_SECONDS = 10
 

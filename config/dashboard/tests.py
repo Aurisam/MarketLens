@@ -19,7 +19,7 @@ class MarketDataTests(SimpleTestCase):
 
         self.assertEqual(services.get_crypto_price("BTC"), 123.45)
         mock_get.assert_called_once_with(
-            "https://api.binance.com/api/v3/ticker/price",
+            "https://data-api.binance.vision/api/v3/ticker/price",
             params={"symbol": "BTCUSDT"},
             timeout=10,
         )
