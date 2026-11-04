@@ -8,31 +8,94 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
     hour: "2-digit",
     minute: "2-digit"
 });
+const axisDateFormatter = new Intl.DateTimeFormat(undefined, {month: "2-digit", day: "2-digit"});
+const axisTimeFormatter = new Intl.DateTimeFormat(undefined, {hour: "2-digit", minute: "2-digit"});
 const priceFormatter = new Intl.NumberFormat(undefined, {
     minimumFractionDigits: 3,
     maximumFractionDigits: 3
 });
 let refreshInProgress = false;
+let syncingCharts = false;
 
 function formatPrice(value) {
     return Number.isFinite(value) ? priceFormatter.format(value) : "—";
 }
 
-function getZoomOptions(minRange) {
+function syncChartRange(id, sourceName) {
+    const charts = chartInstances[id];
+    if (!charts || syncingCharts) {
+        return;
+    }
+
+    const source = charts[sourceName];
+    const target = sourceName === "price" ? charts.rsi : charts.price;
+    syncingCharts = true;
+    try {
+        target.zoomScale("x", {min: source.scales.x.min, max: source.scales.x.max}, "none");
+    } finally {
+        syncingCharts = false;
+    }
+}
+
+function formatAxisTime(timestamp) {
+    const date = new Date(timestamp);
+    return [axisDateFormatter.format(date), axisTimeFormatter.format(date)];
+}
+
+function getTimeScale(times, showLabels) {
+    return {
+        type: "timeseries",
+        offset: true,
+        min: times[0],
+        max: times[times.length - 1],
+        title: {display: showLabels, text: localTimeZone},
+        border: {display: showLabels},
+        grid: {drawTicks: showLabels},
+        afterBuildTicks(scale) {
+            // Use the same candle times for grid lines in both panels.
+            const visibleTimes = times.filter(time => time >= scale.min && time <= scale.max);
+            const tickCount = Math.max(2, Math.min(6, Math.floor(scale.maxWidth / 90)));
+            const step = Math.max(1, Math.ceil(visibleTimes.length / tickCount));
+            scale.ticks = visibleTimes.filter((time, index) => index % step === 0)
+                .map(time => ({value: time}));
+        },
+        ticks: {
+            display: showLabels,
+            source: "data",
+            autoSkip: false,
+            maxRotation: 0,
+            align: "inner",
+            major: {enabled: false},
+            callback: formatAxisTime
+        }
+    };
+}
+
+function setAxisWidth(scale) {
+    // Equal Y-axis widths keep the price and RSI plotting areas aligned.
+    scale.width = 84;
+}
+
+function getZoomOptions(minRange, id, chartName) {
     return {
         limits: {x: {min: "original", max: "original", minRange}},
-        pan: {enabled: true, mode: "x", modifierKey: "shift"},
+        pan: {
+            enabled: true,
+            mode: "x",
+            modifierKey: "shift",
+            onPan: () => syncChartRange(id, chartName)
+        },
         zoom: {
             mode: "x",
             wheel: {enabled: true, modifierKey: "ctrl"},
-            pinch: {enabled: true}
+            pinch: {enabled: true},
+            onZoom: () => syncChartRange(id, chartName)
         }
     };
 }
 
 function zoomCharts(id, factor) {
     chartInstances[id].price.zoom({x: factor}, "none");
-    chartInstances[id].rsi.zoom({x: factor}, "none");
 }
 
 function resetChartZoom(id) {
@@ -52,6 +115,7 @@ function applyChartTheme(chart) {
     const textColor = isDark ? "#dee2e6" : "#495057";
     const gridColor = isDark ? "#495057" : "#dee2e6";
     chart.options.plugins.legend.labels.color = textColor;
+    chart.options.plugins.title.color = textColor;
     chart.options.plugins.tooltip.backgroundColor = isDark ? "#f8f9fa" : "#212529";
     chart.options.plugins.tooltip.titleColor = isDark ? "#212529" : "#f8f9fa";
     chart.options.plugins.tooltip.bodyColor = isDark ? "#212529" : "#f8f9fa";
@@ -144,18 +208,24 @@ function createCharts(id, timeframe = "1h", savedView = null) {
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: false,
-                interaction: {intersect: false, mode: "index"},
+                layout: {padding: {right: 8}},
+                interaction: {intersect: true, mode: "point"},
                 plugins: {
-                    zoom: getZoomOptions(minRange),
+                    legend: {
+                        labels: {
+                            filter: item => item.datasetIndex !== 0
+                        }
+                    },
+                    zoom: getZoomOptions(minRange, id, "price"),
                     tooltip: {
+                        mode: "point",
+                        intersect: true,
+                        filter: item => item.datasetIndex === 0,
                         callbacks: {
                             title(items) {
                                 return formatLocalTime(items[0].parsed.x);
                             },
                             label(context) {
-                                if (context.dataset.type === "line") {
-                                    return context.dataset.label + ": " + formatPrice(context.parsed.y);
-                                }
                                 const candle = context.raw;
                                 return [
                                     "Open: " + formatPrice(candle.o),
@@ -168,17 +238,8 @@ function createCharts(id, timeframe = "1h", savedView = null) {
                     }
                 },
                 scales: {
-                    x: {
-                        type: "timeseries",
-                        title: {display: true, text: localTimeZone},
-                        ticks: {
-                            source: "data",
-                            maxTicksLimit: 8,
-                            major: {enabled: false},
-                            callback: formatLocalTime
-                        }
-                    },
-                    y: {type: "linear"}
+                    x: getTimeScale(times, false),
+                    y: {type: "linear", afterFit: setAxisWidth}
                 }
             }
         }),
@@ -206,7 +267,9 @@ function createCharts(id, timeframe = "1h", savedView = null) {
                 maintainAspectRatio: false,
                 animation: false,
                 plugins: {
-                    zoom: getZoomOptions(minRange),
+                    legend: {display: false},
+                    title: {display: true, text: "RSI (14)", align: "start", padding: 4},
+                    zoom: getZoomOptions(minRange, id, "rsi"),
                     tooltip: {
                         callbacks: {
                             title(items) {
@@ -215,13 +278,10 @@ function createCharts(id, timeframe = "1h", savedView = null) {
                         }
                     }
                 },
+                layout: {padding: {right: 8}},
                 scales: {
-                    y: {min: 0, max: 100},
-                    x: {
-                        title: {display: true, text: localTimeZone},
-                        type: "timeseries",
-                        ticks: {maxTicksLimit: 8, callback: formatLocalTime}
-                    }
+                    y: {min: 0, max: 100, afterFit: setAxisWidth},
+                    x: getTimeScale(times, true)
                 }
             }
         })
@@ -230,11 +290,9 @@ function createCharts(id, timeframe = "1h", savedView = null) {
     applyChartTheme(chartInstances[id].price);
     applyChartTheme(chartInstances[id].rsi);
     if (savedView) {
-        if (savedView.price) {
-            chartInstances[id].price.zoomScale("x", savedView.price, "none");
-        }
-        if (savedView.rsi) {
-            chartInstances[id].rsi.zoomScale("x", savedView.rsi, "none");
+        const range = savedView.price || savedView.rsi;
+        if (range) {
+            chartInstances[id].price.zoomScale("x", range, "none");
         }
     }
 }

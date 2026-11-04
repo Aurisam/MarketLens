@@ -78,7 +78,8 @@
                     <p class="small text-muted">Ctrl + scroll to zoom. Shift + drag to pan. Pinch to zoom on touchscreens.</p>
 
                     <h6>Price (candlesticks)</h6>
-                    <div style="height: 260px;">
+                    <div class="chart-stack">
+                    <div style="height: 300px;">
 
                         <canvas id="price-chart-{{ instrument.id }}"
                                 {% for timeframe, chart in instrument.chart_data.items %}
@@ -94,8 +95,7 @@
 
                     </div>
 
-                    <h6 class="mt-4">RSI (14)</h6>
-                    <div style="height: 150px;">
+                    <div class="border-top" style="height: 160px;">
 
                         <canvas id="rsi-chart-{{ instrument.id }}"
                                 {% for timeframe, chart in instrument.chart_data.items %}
@@ -104,6 +104,7 @@
                                 {% endfor %}>
                         </canvas>
 
+                    </div>
                     </div>
 
                 </div>

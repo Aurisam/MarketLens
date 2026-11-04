@@ -13,8 +13,9 @@ MarketLens – internetinė akcijų, ETF ir kriptovaliutų stebėjimo sistema. J
 - RSI 14 rodiklis ir jo būsenos vertinimas.
 - Kainos krypties, atskirų intervalų ir bendras techninis signalas.
 - Duomenų patikros laikas ir vėluojančio atnaujinimo žymėjimas.
-- Trijų skaitmenų po kablelio tikslumas žvakių kainų užuominose.
-- Grafikų priartinimas, atitolinimas, slinkimas ir pradinio vaizdo atkūrimas.
+- Trijų skaitmenų po kablelio tikslumas užuominose, rodomose užvedus ant žvakės.
+- Sujungti kainos ir RSI grafikai su viena matoma laiko ašimi.
+- Sinchronizuotas grafikų priartinimas, atitolinimas, slinkimas ir pradinio vaizdo atkūrimas.
 - Tamsi ir šviesi tema su naršyklėje išsaugomu pasirinkimu.
 - Instrumentų valdymas per Django administravimo sąsają.
 
