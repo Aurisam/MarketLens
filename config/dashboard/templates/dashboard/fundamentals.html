@@ -1,0 +1,25 @@
+{# Tik įmonių akcijų metrikos: trūkstami skaičiai nepaverčiami nuliais. #}
+<details class="border rounded p-3 mb-3" data-panel="fundamentals-{{ instrument.id }}">
+    <summary class="fw-semibold">Company fundamentals</summary>
+    {% with fund=instrument.fundamental_data %}
+    <div class="table-responsive mt-2">
+        <table class="table table-sm mb-2">
+            <thead><tr><th scope="col">Metric</th><th scope="col">Value</th><th scope="col">Period / meaning</th></tr></thead>
+            <tbody>
+                <tr><th scope="row">P/E</th><td>{% if fund.trailing_pe != None %}{{ fund.trailing_pe|floatformat:2 }}{% else %}No data{% endif %}</td><td>Trailing 12 months · price / earnings per share</td></tr>
+                <tr><th scope="row">Forward P/E</th><td>{% if fund.forward_pe != None %}{{ fund.forward_pe|floatformat:2 }}{% else %}No data{% endif %}</td><td>Based on estimated earnings</td></tr>
+                <tr><th scope="row">Revenue growth</th><td>{% if fund.revenue_growth_percent != None %}{{ fund.revenue_growth_percent|floatformat:2 }}%{% else %}No data{% endif %}</td><td>Latest reported quarter · year over year</td></tr>
+                <tr><th scope="row">Earnings growth</th><td>{% if fund.earnings_growth_percent != None %}{{ fund.earnings_growth_percent|floatformat:2 }}%{% else %}No data{% endif %}</td><td>Latest reported quarter · year over year</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="small text-muted mb-0">
+        Source: <a href="{{ instrument.fundamental_url }}" target="_blank" rel="noopener noreferrer">Yahoo Finance</a>.
+        Latest reported quarter ended: {{ fund.period_end|date:"Y-m-d"|default:"No data" }}.
+        {% if fund.updated_at %}Saved: <time data-local-time="{{ fund.updated_at|date:'c' }}">{{ fund.updated_at|date:'c' }}</time>.{% else %}Waiting for the first fundamentals update.{% endif %}
+        {% if fund.checked_at %}Checked: <time data-local-time="{{ fund.checked_at|date:'c' }}">{{ fund.checked_at|date:'c' }}</time>.{% endif %}
+        {% if fund and not fund.last_fetch_succeeded %}<span class="text-warning">Source unavailable; previously saved values are retained.</span>{% endif %}
+        Values are checked daily; missing or non-positive P/E values are shown as No data.
+    </p>
+    {% endwith %}
+</details>

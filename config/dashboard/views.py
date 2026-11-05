@@ -1,6 +1,7 @@
 """Puslapiai skaito istoriją iš DB; atskiras kainų maršrutas tikrina naujausias Yahoo kainas."""
 
 from datetime import timedelta
+from urllib.parse import quote
 
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -24,7 +25,7 @@ from .services import (
 
 def get_dashboard_instruments():
     """Prideda instrumentams grafikų duomenis, indikatorius, signalus ir duomenų senumo žymą."""
-    instruments = Instrument.objects.all()
+    instruments = Instrument.objects.select_related("fundamentals").all()
 
     for instrument in instruments:
         timeframes = get_instrument_timeframes(instrument)
@@ -41,6 +42,7 @@ def get_dashboard_instruments():
         instrument.sma = {}
         instrument.rsi = {}
         instrument.signals = {}
+        instrument.analysis_rows = []
 
         # Kiekvienam intervalui paruošiama atskira kainų ir indikatorių seka.
         for timeframe in timeframes:
@@ -60,6 +62,13 @@ def get_dashboard_instruments():
                 instrument.sma.get(timeframe),
                 instrument.rsi.get(timeframe),
             )
+            instrument.analysis_rows.append({
+                "timeframe": timeframe,
+                "weight": {"1h": 1, "4h": 2, "1d": 3}[timeframe],
+                "sma": instrument.sma[timeframe],
+                "rsi": instrument.rsi[timeframe],
+                "analysis": instrument.signals[timeframe],
+            })
 
         instrument.overall_signal = get_overall_signal(
             instrument.signals
@@ -68,6 +77,12 @@ def get_dashboard_instruments():
         instrument.signal_consensus = get_signal_consensus(
             instrument.signals
         )
+        instrument.fundamental_data = getattr(instrument, "fundamentals", None)
+        instrument.fundamental_url = f"https://finance.yahoo.com/quote/{quote(instrument.symbol, safe='')}/key-statistics/"
+        if instrument.fundamental_data:
+            saved = instrument.fundamental_data
+            saved.revenue_growth_percent = saved.revenue_growth * 100 if saved.revenue_growth is not None else None
+            saved.earnings_growth_percent = saved.earnings_growth * 100 if saved.earnings_growth is not None else None
 
         # SMA analizėje išsaugome ir to paties intervalo paprastą kryptį.
         for timeframe, analysis in instrument.sma.items():

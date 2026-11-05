@@ -9,6 +9,7 @@ let now = Date.now();
 const timers = new Map();
 let timerId = 0;
 const listeners = {};
+const emitted = [];
 const sockets = [];
 let requests = 0;
 let responseOK = true;
@@ -38,6 +39,7 @@ const document = {
     querySelectorAll: () => cards,
     getElementById: () => ({dataset: {pricesUrl: "/prices/"}}),
     addEventListener: (name, callback) => { listeners[name] = callback; },
+    dispatchEvent: event => { emitted.push(event); },
 };
 const navigator = {onLine: true};
 
@@ -52,6 +54,7 @@ class FakeSocket {
 }
 const context = vm.createContext({
     document, navigator, WebSocket: FakeSocket, Intl, AbortController,
+    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     Date: class extends Date { static now() { return now; } },
     window: {addEventListener: (name, callback) => { listeners[name] = callback; }},
     setTimeout: (callback, delay) => { timers.set(++timerId, {callback, delay}); return timerId; },
@@ -66,7 +69,12 @@ const pollYahoo = () => [...timers.values()].find(timer => timer.interval && tim
 vm.runInContext(source, context);
 await flush();
 assert.equal(sockets.length, 2);
-assert.match(sockets[0].url, /btcusdt@miniTicker\/solusdt@miniTicker/);
+for (const symbol of ["btcusdt", "solusdt"]) {
+    assert.ok(sockets[0].url.includes(`${symbol}@miniTicker`));
+    for (const interval of ["1h", "4h", "1d"]) {
+        assert.ok(sockets[0].url.includes(`${symbol}@kline_${interval}`));
+    }
+}
 assert.match(element(4, "live-price").textContent, /20\.00/);
 assert.match(element(4, "price-time").textContent, /Quote:.*Checked:/);
 assert.match(element(5, "price-status").textContent, /unavailable/);
@@ -75,6 +83,7 @@ const [binance, hyperliquid] = sockets;
 binance.open();
 hyperliquid.open();
 assert.deepEqual(hyperliquid.sent[0], {method: "subscribe", subscription: {type: "allMids"}});
+assert.equal(hyperliquid.sent.length, 4);
 assert.match(element(1, "price-status").textContent, /waiting/);
 binance.message({data: {e: "24hrMiniTicker", E: now, s: "BTCUSDT", c: "100"}});
 assert.equal(element(1, "live-price").textContent, "100.00 USDT");
@@ -88,6 +97,13 @@ assert.equal(element(1, "live-price").textContent, "101.00 USDT");
 hyperliquid.message({channel: "allMids", data: {mids: {HYPE: "45.123"}}});
 assert.match(element(3, "live-price").textContent, /45\.123/);
 assert.equal(element(3, "price-status").textContent, "Live · Hyperliquid");
+binance.message({data: {e: "kline", E: now, s: "BTCUSDT", k: {i: "1h", t: now - 1000, o: "100", h: "102", l: "99", c: "101"}}});
+assert.equal(emitted.at(-1).type, "marketcandle");
+assert.equal(emitted.at(-1).detail.candle.h, 102);
+hyperliquid.message({channel: "candle", data: {s: "HYPE", i: "4h", t: now - 1000, o: "40", h: "46", l: "39", c: "45"}});
+assert.equal(emitted.at(-1).detail.source, "Hyperliquid");
+assert.equal(emitted.at(-1).detail.interval, "4h");
+assert.equal(emitted.at(-1).detail.candle.c, 45);
 
 // Minutinis kortelių pakeitimas turi atkurti srauto kainas ir nekurti papildomų ryšių.
 cards = cards.map(card => makeCard(card.dataset.instrumentId, card.dataset.source, card.dataset.symbol));

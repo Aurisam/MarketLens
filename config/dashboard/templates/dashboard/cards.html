@@ -2,9 +2,10 @@
     <div class="row g-4" id="instrument-cards">
         {# Kiekvienas instrumentas turi savo kortelę, mygtukus ir unikalius grafikų ID. #}
         {% for instrument in instruments %}
-        <div class="col-12">
+        <div class="col-12" data-instrument-item>
             <div class="card shadow-sm instrument-card" data-instrument-id="{{ instrument.id }}"
                  data-source="{{ instrument.data_source }}" data-symbol="{{ instrument.symbol }}"
+                 data-name="{{ instrument.name }}" data-type="{{ instrument.instrument_type }}"
                  data-saved-price-time="{{ instrument.price_updated_at|date:'c' }}">
                 <div class="card-body">
 
@@ -12,6 +13,9 @@
                         <div>
                             <h4 class="mb-1">
                                 {{ instrument.name }} ({{ instrument.symbol }})
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        data-favorite-id="{{ instrument.id }}" aria-pressed="false"
+                                        aria-label="Add {{ instrument.name }} to favorites">☆</button>
                             </h4>
                             <span class="text-muted">
                                 {{ instrument.instrument_type|title }}
@@ -54,7 +58,7 @@
 
                         {% for timeframe, analysis in instrument.rsi.items %}
                         <span class="badge text-bg-info">
-                            {{ timeframe }} RSI:
+                            {{ timeframe }} saved RSI:
                             {% if analysis %}
                                 {{ analysis.rsi }}
                             {% else %}
@@ -63,6 +67,10 @@
                         </span>
                         {% endfor %}
                     </div>
+                    {% include "dashboard/signal_details.html" %}
+                    {% if instrument.instrument_type == "Stock" %}
+                        {% include "dashboard/fundamentals.html" %}
+                    {% endif %}
 
                     <hr>
 
@@ -89,6 +97,9 @@
                     <p class="small text-muted">Ctrl + scroll to zoom. Shift + drag to pan. Pinch to zoom on touchscreens.</p>
 
                     <h6>Price (candlesticks)</h6>
+                    <p class="small text-muted" data-candle-status>
+                        Saved candles and indicators{% if instrument.data_updated_at %} · <time data-local-time="{{ instrument.data_updated_at|date:'c' }}">{{ instrument.data_updated_at|date:'c' }}</time>{% endif %}.
+                    </p>
                     {# Gretimi kainos ir RSI grafikai turi susietą laiko intervalą ir vieną matomą X ašį apačioje. #}
                     <div class="chart-stack">
                     <div style="height: 300px;">

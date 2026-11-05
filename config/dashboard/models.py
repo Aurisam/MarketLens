@@ -4,6 +4,7 @@ from django.db import models
 
 
 class Instrument(models.Model):
+    """Stebimas aktyvas, jo šaltinis ir paskutinė DB išsaugota kaina."""
     INSTRUMENT_TYPES = [
         ('Crypto', 'Crypto'),
         ('Stock', 'Stock'),
@@ -35,7 +36,28 @@ class Instrument(models.Model):
     )
 
     def __str__(self):
+        """Administravimo sąraše pateikia pavadinimą ir biržos simbolį."""
         return self.name + ' (' + self.symbol + ')'
+
+
+class StockFundamentals(models.Model):
+    """Kartą per parą tikrinami akcijos rodikliai; trūkstamos reikšmės saugomos kaip NULL."""
+
+    instrument = models.OneToOneField(Instrument, on_delete=models.CASCADE, related_name="fundamentals")
+    trailing_pe = models.FloatField(null=True, blank=True)
+    forward_pe = models.FloatField(null=True, blank=True)
+    # Augimas saugomas dalimis: 0.15 reiškia 15 %, o -0.10 reiškia -10 %.
+    revenue_growth = models.FloatField(null=True, blank=True)
+    earnings_growth = models.FloatField(null=True, blank=True)
+    period_end = models.DateField(null=True, blank=True)
+    source = models.CharField(max_length=30, default="Yahoo Finance")
+    updated_at = models.DateTimeField(null=True, blank=True)
+    checked_at = models.DateTimeField(null=True, blank=True)
+    last_fetch_succeeded = models.BooleanField(default=False)
+
+    def __str__(self):
+        """Nurodo, kuriam instrumentui priklauso fundamentiniai duomenys."""
+        return f"{self.instrument.symbol} fundamentals"
 
 
 class Candle(models.Model):

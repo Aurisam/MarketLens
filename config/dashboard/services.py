@@ -424,26 +424,28 @@ def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
     # Kylanti kryptis prideda vieną balą, krintanti atima; šoninė kryptis balo nekeičia.
     if trend == "Uptrend":
         score += 1
-        factors.append("Trend bullish")
+        factors.append("Uptrend: first-to-last close increased (+1)")
     elif trend == "Downtrend":
         score -= 1
-        factors.append("Trend bearish")
+        factors.append("Downtrend: first-to-last close decreased (-1)")
+    elif trend == "Sideways":
+        factors.append("Sideways: first and last close are equal (0)")
 
     # Kainos pozicija virš arba žemiau kiekvieno SMA prideda arba atima po vieną balą.
     if sma_analysis:
         if sma_analysis["price_above_sma20"]:
             score += 1
-            factors.append("Price above SMA20")
+            factors.append("Price above SMA20 (+1)")
         else:
             score -= 1
-            factors.append("Price below SMA20")
+            factors.append("Price at or below SMA20 (-1)")
 
         if sma_analysis["price_above_sma50"]:
             score += 1
-            factors.append("Price above SMA50")
+            factors.append("Price above SMA50 (+1)")
         else:
             score -= 1
-            factors.append("Price below SMA50")
+            factors.append("Price at or below SMA50 (-1)")
 
     # Signalo RSI ribos yra 55 ir 45; tai atskira taisyklė nuo 70/30 būsenų aprašymo.
     if rsi_analysis:
@@ -451,12 +453,12 @@ def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
 
         if rsi >= 55:
             score += 1
-            factors.append("RSI bullish")
+            factors.append("RSI at least 55 (+1)")
         elif rsi <= 45:
             score -= 1
-            factors.append("RSI bearish")
+            factors.append("RSI at most 45 (-1)")
         else:
-            factors.append("RSI neutral")
+            factors.append("RSI between 45 and 55 (0)")
 
     # Signalui reikia bent dviejų indikatorių grupių; SMA20 ir SMA50 čia laikomi viena grupe.
     indicators_available = sum([
@@ -499,6 +501,7 @@ def get_overall_signal(timeframe_signals):
 
     weighted_score = 0
     total_weight = 0
+    timeframes_used = 0
 
     for timeframe, weight in weights.items():
         analysis = timeframe_signals.get(timeframe)
@@ -508,12 +511,14 @@ def get_overall_signal(timeframe_signals):
 
         weighted_score += analysis["score"] * weight
         total_weight += weight
+        timeframes_used += 1
 
     if total_weight == 0:
         return {
             "score": None,
             "signal": "No data",
             "timeframes_used": 0,
+            "total_weight": 0,
         }
 
     score = round(weighted_score / total_weight, 2)
@@ -528,8 +533,8 @@ def get_overall_signal(timeframe_signals):
     return {
         "score": score,
         "signal": signal,
-        # Šis laukas saugo panaudotų svorių sumą, o ne intervalų skaičių.
-        "timeframes_used": total_weight,
+        "timeframes_used": timeframes_used,
+        "total_weight": total_weight,
     }
 
 

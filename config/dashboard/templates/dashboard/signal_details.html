@@ -1,0 +1,33 @@
+{# Visų intervalų priežastys leidžia patikrinti bendro signalo skaičiavimą. #}
+<details class="border rounded p-3 mb-3" data-panel="signal-{{ instrument.id }}">
+    <summary class="fw-semibold">Why this signal?</summary>
+    <p class="small text-muted mt-2">
+        Saved candle analysis. Live chart changes are calculated separately.
+        Each interval is Bullish at a score of 2 or more, Bearish at -2 or less, and Neutral otherwise.
+        At least two indicator groups are required.
+    </p>
+    <div class="row g-3">
+        {% for row in instrument.analysis_rows %}
+        <div class="col-12 col-lg-4">
+            <h6>{{ row.timeframe }} · weight {{ row.weight }} · {{ row.analysis.signal }}</h6>
+            <p class="small mb-1">Score: {{ row.analysis.score|default_if_none:"N/A" }} · Indicator groups: {{ row.analysis.indicators_available }}/3</p>
+            <ul class="small ps-3">
+                {% for factor in row.analysis.factors %}<li>{{ factor }}</li>{% empty %}<li>Not enough saved data.</li>{% endfor %}
+            </ul>
+            <p class="small text-muted mb-0">
+                SMA20: {{ row.sma.sma20|floatformat:3|default:"N/A" }} ·
+                SMA50: {{ row.sma.sma50|floatformat:3|default:"N/A" }} ·
+                RSI14: {{ row.rsi.rsi|floatformat:2|default:"N/A" }}
+            </p>
+        </div>
+        {% endfor %}
+    </div>
+    <p class="small mt-3 mb-0">
+        Overall score = sum of interval scores × weights / sum of available weights.
+        Used: {{ instrument.overall_signal.timeframes_used }} intervals;
+        total weight: {{ instrument.overall_signal.total_weight }};
+        score: {{ instrument.overall_signal.score|default_if_none:"N/A" }}.
+        Overall: Bullish ≥ 1.5, Bearish ≤ -1.5, otherwise Neutral.
+        Agreement: {{ instrument.signal_consensus.alignment }}.
+    </p>
+</details>

@@ -1,4 +1,4 @@
-// Šis modulis keičia tik kortelių kainas. Žvakės ir indikatoriai toliau atnaujinami iš DB.
+// Modulis keičia kortelių kainas ir perduoda tikras biržų OHLC žvakes grafikų moduliui.
 // Atskira funkcijos sritis neleidžia kainų kintamiesiems susimaišyti su charts.js kintamaisiais.
 (() => {
     const latestQuotes = {};
@@ -102,7 +102,30 @@
                 price: Number(message.data.mids[card.dataset.symbol]),
                 priceTime: receivedAt, receivedAt, currency: "USD"
             }));
+        } else if (source === "Binance" && message.data?.e === "kline") {
+            const data = message.data;
+            const candle = data.k;
+            if (candle && Number.isFinite(data.E)) {
+                getCards(source).filter(card => `${card.dataset.symbol.toUpperCase()}USDT` === data.s)
+                    .forEach(card => publishCandle(card, candle.i, candle, data.E));
+            }
+        } else if (source === "Hyperliquid" && message.channel === "candle") {
+            // Hyperliquid gali pateikti vieną žvakę arba pradinį žvakių sąrašą.
+            const candles = Array.isArray(message.data) ? message.data : [message.data];
+            candles.filter(candle => candle && typeof candle === "object").forEach(candle => {
+                getCards(source).filter(card => card.dataset.symbol === candle.s)
+                    .forEach(card => publishCandle(card, candle.i, candle, receivedAt));
+            });
         }
+    }
+
+    // Sulygina laukų pavadinimus ir perduoda žvakę; galutinį OHLC tikrinimą atlieka charts.js.
+    function publishCandle(card, interval, candle, updatedAt) {
+        document.dispatchEvent(new CustomEvent("marketcandle", {detail: {
+            id: card.dataset.instrumentId, source: card.dataset.source, symbol: card.dataset.symbol,
+            interval, updatedAt,
+            candle: {x: Number(candle.t), o: Number(candle.o), h: Number(candle.h), l: Number(candle.l), c: Number(candle.c)}
+        }}));
     }
 
     // Prisijungia prie vieno šaltinio. Nutrūkęs ryšys atkuriamas vis didinant laukimą iki 30 sekundžių.
@@ -121,6 +144,13 @@
                 stream.lastMessageAt = Date.now();
                 if (source === "Hyperliquid") {
                     socket.send(JSON.stringify({method: "subscribe", subscription: {type: "allMids"}}));
+                    getCards(source).forEach(card => {
+                        ["1h", "4h", "1d"].forEach(interval => {
+                            socket.send(JSON.stringify({method: "subscribe", subscription: {
+                                type: "candle", coin: card.dataset.symbol, interval
+                            }}));
+                        });
+                    });
                 }
                 getCards(source).forEach(renderCard);
             };
@@ -192,7 +222,10 @@
                 return;
             }
             if (!streams[source]) {
-                const names = symbols.map(symbol => `${symbol.toLowerCase()}usdt@miniTicker`).join("/");
+                const names = symbols.flatMap(symbol => {
+                    const pair = `${symbol.toLowerCase()}usdt`;
+                    return [`${pair}@miniTicker`, ...["1h", "4h", "1d"].map(interval => `${pair}@kline_${interval}`)];
+                }).join("/");
                 streams[source] = {
                     signature, retries: 0, retryTimer: null, socket: null,
                     url: source === "Binance" ? `wss://data-stream.binance.vision:443/stream?streams=${names}`

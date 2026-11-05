@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from dashboard.models import Candle, Instrument
+from dashboard.fundamentals import refresh_stock_fundamentals
 from dashboard.services import get_instrument_candles, get_instrument_price, get_instrument_timeframes
 
 
@@ -54,6 +55,11 @@ class Command(BaseCommand):
                 else:
                     failures += 1
                 instrument.save(update_fields=["last_price", "price_updated_at", "data_updated_at"])
+
+        # Tas pats tvarkaraštis paleidžia ir fundamentinius duomenis, bet jų helperis tikrina paros ribą.
+        fundamentals = refresh_stock_fundamentals()
+        if fundamentals["failed"]:
+            self.stderr.write("Some stock fundamentals are unavailable; previous values were kept.")
 
         # Klaida pranešama jau išsaugojus sėkmingus rezultatus; GitHub Actions matys nesėkmingą vykdymą.
         if failures:

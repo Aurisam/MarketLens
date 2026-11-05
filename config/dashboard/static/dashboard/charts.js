@@ -1,6 +1,9 @@
 // Naršyklės grafikų būsena saugoma pagal instrumento ID, kad kortelės veiktų nepriklausomai.
 const chartInstances = {};
 const selectedTimeframes = {};
+// Gyvos žvakės saugomos atskirai, kad jų neprarastume gavę senesnį DB HTML fragmentą.
+const liveCandleData = {};
+const pendingLiveRenders = {};
 // Laiko juosta paimama iš vartotojo naršyklės, todėl konkreti šalis kode nenustatoma.
 const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -110,8 +113,14 @@ function zoomCharts(id, factor) {
 
 // Grąžina abu instrumento grafikus į pradinį laiko intervalą.
 function resetChartZoom(id) {
-    chartInstances[id].price.resetZoom("none");
-    chartInstances[id].rsi.resetZoom("none");
+    const charts = chartInstances[id];
+    [charts.price, charts.rsi].forEach(chart => {
+        chart.resetZoom("none");
+        // Gyvas srautas galėjo pridėti naują žvakę po pradinio grafiko sukūrimo.
+        chart.options.scales.x.min = charts.times[0];
+        chart.options.scales.x.max = charts.times.at(-1);
+        chart.update("none");
+    });
 }
 
 // Išsaugo pakeistą matomą intervalą; nepakeistam grafikui grąžina null.
@@ -164,6 +173,143 @@ function getChartValues(canvas, timeframe, field) {
     return readNumbers(canvas.getAttribute(`data-chart-${timeframe}-${field}`));
 }
 
+// Skaičiuoja SMA ir Wilder RSI kiekvienam taškui, kai žvakė keičiasi tiesioginiame sraute.
+function calculateChartIndicators(candles) {
+    const closes = candles.map(candle => candle.c);
+    const sma20 = closes.map((value, index) => index >= 19
+        ? closes.slice(index - 19, index + 1).reduce((sum, close) => sum + close, 0) / 20 : null);
+    const sma50 = closes.map((value, index) => index >= 49
+        ? closes.slice(index - 49, index + 1).reduce((sum, close) => sum + close, 0) / 50 : null);
+    const rsi = closes.map(() => null);
+    let gain = 0;
+    let loss = 0;
+    for (let index = 1; index < closes.length; index += 1) {
+        const change = closes[index] - closes[index - 1];
+        const up = Math.max(change, 0);
+        const down = Math.max(-change, 0);
+        if (index <= 14) {
+            gain += up / 14;
+            loss += down / 14;
+        } else {
+            gain = (gain * 13 + up) / 14;
+            loss = (loss * 13 + down) / 14;
+        }
+        if (index >= 14) {
+            rsi[index] = loss === 0 ? (gain > 0 ? 100 : 50) : 100 - 100 / (1 + gain / loss);
+            rsi[index] = Math.round(rsi[index] * 100) / 100;
+        }
+    }
+    return {sma20, sma50, rsi};
+}
+
+// Sujungia DB istoriją ir biržos OHLC žvakes pagal pradžios laiką, išlaikydama paskutines 100.
+function getMergedCandles(id, timeframe, canvas) {
+    const times = getChartValues(canvas, timeframe, "labels");
+    const opens = getChartValues(canvas, timeframe, "opens");
+    const highs = getChartValues(canvas, timeframe, "highs");
+    const lows = getChartValues(canvas, timeframe, "lows");
+    const closes = getChartValues(canvas, timeframe, "prices");
+    const candles = new Map(times.map((time, index) => [time, {
+        x: time, o: opens[index], h: highs[index], l: lows[index], c: closes[index]
+    }]));
+    const cache = liveCandleData[id];
+    if (cache) {
+        const card = canvas.closest(".instrument-card");
+        if (cache.identity === `${card.dataset.source}:${card.dataset.symbol}`) {
+            (cache.timeframes[timeframe] || []).forEach(item => candles.set(item.candle.x, item.candle));
+        } else {
+            delete liveCandleData[id];
+        }
+    }
+    return [...candles.values()].sort((first, second) => first.x - second.x).slice(-100);
+}
+
+// Žyma atskiria gyvą grafiką nuo iš DB išsaugotų bendro signalo ir kortelės RSI reikšmių.
+function updateCandleStatus(id) {
+    const canvas = document.getElementById(`price-chart-${id}`);
+    const status = canvas?.closest(".instrument-card").querySelector("[data-candle-status]");
+    if (!status) {
+        return;
+    }
+    const candles = liveCandleData[id]?.timeframes[selectedTimeframes[id] || "1h"];
+    status.textContent = candles?.length
+        ? `Live candles, SMA and RSI · ${formatLocalTime(candles.at(-1).updatedAt)}. Saved signal analysis is shown above.`
+        : "Saved candles and indicators. Waiting for the next data update.";
+}
+
+// Pakeičia aktyvaus grafiko duomenis jo neperkurdama ir išlaiko vartotojo pasirinktą priartinimą.
+function updateLiveChart(id) {
+    const charts = chartInstances[id];
+    const canvas = document.getElementById(`price-chart-${id}`);
+    if (!charts || !canvas) {
+        return;
+    }
+    if (!liveCandleData[id]?.timeframes[charts.timeframe]) {
+        return;
+    }
+    const candles = getMergedCandles(id, charts.timeframe, canvas);
+    if (!candles.length) {
+        return;
+    }
+    const indicators = calculateChartIndicators(candles);
+    const zoomed = charts.price.isZoomedOrPanned() || charts.rsi.isZoomedOrPanned();
+    // Ašies callback naudoja tą patį times masyvą, todėl keičiame jo turinį, o ne nuorodą.
+    charts.times.splice(0, charts.times.length, ...candles.map(candle => candle.x));
+    charts.price.data.datasets[0].data = candles;
+    charts.price.data.datasets[1].data = charts.times.map((time, index) => ({x: time, y: indicators.sma20[index]}));
+    charts.price.data.datasets[2].data = charts.times.map((time, index) => ({x: time, y: indicators.sma50[index]}));
+    charts.rsi.data.datasets[0].data = charts.times.map((time, index) => ({x: time, y: indicators.rsi[index]}));
+    charts.rsi.data.datasets[1].data = charts.times.map(time => ({x: time, y: 70}));
+    charts.rsi.data.datasets[2].data = charts.times.map(time => ({x: time, y: 30}));
+    [charts.price, charts.rsi].forEach(chart => {
+        chart.options.plugins.zoom.limits.x.min = charts.times[0];
+        chart.options.plugins.zoom.limits.x.max = charts.times.at(-1);
+        if (!zoomed) {
+            chart.options.scales.x.min = charts.times[0];
+            chart.options.scales.x.max = charts.times.at(-1);
+        }
+        chart.update("none");
+    });
+    updateCandleStatus(id);
+}
+
+// Priima tik tikrą biržos OHLC žvakę; vien iš naujos kainos open/high/low neišgalvojami.
+function receiveLiveCandle(detail) {
+    const {id, source, symbol, interval, candle, updatedAt} = detail;
+    const canvas = document.getElementById(`price-chart-${id}`);
+    const card = canvas?.closest(".instrument-card");
+    if (!card || card.dataset.source !== source || card.dataset.symbol !== symbol
+        || !["Binance", "Hyperliquid"].includes(source) || !["1h", "4h", "1d"].includes(interval)) {
+        return;
+    }
+    const values = [candle.o, candle.h, candle.l, candle.c];
+    if (!values.every(value => Number.isFinite(value) && value > 0)
+        || !Number.isFinite(candle.x) || candle.x < 0 || candle.x > Date.now() + 60000
+        || !Number.isFinite(updatedAt) || candle.l > Math.min(candle.o, candle.c)
+        || candle.h < Math.max(candle.o, candle.c)) {
+        return;
+    }
+    const identity = `${source}:${symbol}`;
+    if (liveCandleData[id]?.identity !== identity) {
+        liveCandleData[id] = {identity, timeframes: {}};
+    }
+    const timeframes = liveCandleData[id].timeframes;
+    const saved = timeframes[interval] || [];
+    const previous = saved.find(item => item.candle.x === candle.x);
+    if (previous && previous.updatedAt > updatedAt) {
+        return;
+    }
+    timeframes[interval] = [...saved.filter(item => item.candle.x !== candle.x), {candle, updatedAt}]
+        .sort((first, second) => first.candle.x - second.candle.x).slice(-100);
+    // Kelių intervalų žinutės gali ateiti kartu; aktyvus grafikas atnaujinamas vieną kartą per 250 ms.
+    if (!pendingLiveRenders[id]) {
+        pendingLiveRenders[id] = setTimeout(() => {
+            delete pendingLiveRenders[id];
+            updateLiveChart(id);
+        }, 250);
+    }
+}
+
 // Sukuria instrumento žvakių bei RSI grafikus ir, jei reikia, atkuria ankstesnį priartinimą.
 function createCharts(id, timeframe = "1h", savedView = null) {
     const priceCanvas = document.getElementById(`price-chart-${id}`);
@@ -172,22 +318,15 @@ function createCharts(id, timeframe = "1h", savedView = null) {
         return;
     }
 
-    const times = getChartValues(priceCanvas, timeframe, "labels");
-    const prices = getChartValues(priceCanvas, timeframe, "prices");
-    const opens = getChartValues(priceCanvas, timeframe, "opens");
-    const highs = getChartValues(priceCanvas, timeframe, "highs");
-    const lows = getChartValues(priceCanvas, timeframe, "lows");
-    const sma20 = getChartValues(priceCanvas, timeframe, "sma20");
-    const sma50 = getChartValues(priceCanvas, timeframe, "sma50");
-    const rsi = getChartValues(rsiCanvas, timeframe, "rsi");
-    // Finansinių grafikų biblioteka tikisi x (laikas) ir o/h/l/c (žvakės kainos) laukų.
-    const candles = times.map((time, index) => ({
-        x: time,
-        o: opens[index],
-        h: highs[index],
-        l: lows[index],
-        c: prices[index]
-    }));
+    const candles = getMergedCandles(id, timeframe, priceCanvas);
+    const times = candles.map(candle => candle.x);
+    const indicators = liveCandleData[id]?.timeframes[timeframe]
+        ? calculateChartIndicators(candles) : {
+            sma20: getChartValues(priceCanvas, timeframe, "sma20"),
+            sma50: getChartValues(priceCanvas, timeframe, "sma50"),
+            rsi: getChartValues(rsiCanvas, timeframe, "rsi")
+        };
+    const {sma20, sma50, rsi} = indicators;
 
     // Neleidžiame priartinti labiau nei maždaug iki dviejų intervalų pločio.
     const minRange = times.length > 1 ? (times[1] - times[0]) * 2 : 1;
@@ -199,6 +338,7 @@ function createCharts(id, timeframe = "1h", savedView = null) {
     }
 
     chartInstances[id] = {
+        times, timeframe,
         // Viršutinis grafikas: OHLC žvakės su SMA20 ir SMA50 linijomis.
         price: new Chart(priceCanvas, {
             type: "candlestick",
@@ -330,6 +470,7 @@ function changeTimeframe(id, timeframe, button, savedView = null) {
     button.parentElement.querySelectorAll("button").forEach(timeframeButton => {
         timeframeButton.classList.toggle("active", timeframeButton === button);
     });
+    updateCandleStatus(id);
 }
 
 // Paruošia kortelių vietinį laiką bei grafikus pirmą kartą arba atnaujinus HTML.
@@ -381,6 +522,7 @@ async function refreshDashboard() {
 
         // Prieš pakeisdami DOM išsaugome vaizdą ir atlaisviname senų grafikų išteklius.
         const savedViews = {};
+        document.dispatchEvent(new Event("dashboardbeforerefresh"));
         Object.keys(chartInstances).forEach(id => {
             savedViews[id] = {
                 price: getChartRange(chartInstances[id].price),
@@ -420,5 +562,18 @@ document.addEventListener("themechange", () => {
     Object.values(chartInstances).forEach(charts => {
         applyChartTheme(charts.price);
         applyChartTheme(charts.rsi);
+    });
+});
+
+document.addEventListener("marketcandle", event => receiveLiveCandle(event.detail));
+
+// Filtras gali parodyti anksčiau paslėptą kortelę, todėl jos grafikams perskaičiuojamas dydis.
+document.addEventListener("dashboardfilterchange", () => {
+    Object.entries(chartInstances).forEach(([id, charts]) => {
+        const item = document.getElementById(`price-chart-${id}`).closest("[data-instrument-item]");
+        if (item && !item.hidden) {
+            charts.price.resize();
+            charts.rsi.resize();
+        }
     });
 });

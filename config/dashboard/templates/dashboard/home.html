@@ -42,6 +42,31 @@
         Times shown in <span id="time-zone"></span>.
         <span id="refresh-status" role="status">Auto refresh enabled (every minute).</span>
     </p>
+    {# Valdikliai yra už atnaujinamų kortelių ribų, todėl paieška nepradingsta kas minutę. #}
+    <div class="row g-3 align-items-end mb-4">
+        <div class="col-12 col-md-6">
+            <label class="form-label" for="instrument-search">Search instruments</label>
+            <input id="instrument-search" type="search" class="form-control" placeholder="Name or symbol, e.g. BTC"
+                   autocomplete="off">
+        </div>
+        <div class="col-6 col-md-3">
+            <label class="form-label" for="instrument-type">Asset type</label>
+            <select id="instrument-type" class="form-select">
+                <option value="">All assets</option>
+                <option value="Crypto">Crypto</option>
+                <option value="Stock">Stocks</option>
+                <option value="ETF">ETF</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-3 pb-2">
+            <div class="form-check">
+                <input id="favorites-only" type="checkbox" class="form-check-input">
+                <label for="favorites-only" class="form-check-label">Favorites only</label>
+            </div>
+        </div>
+    </div>
+    <p id="filter-status" class="small text-muted" role="status"></p>
+    <p id="no-filter-results" class="alert alert-secondary" hidden>No instruments match these filters.</p>
     {# data-refresh-url nurodo adresą, iš kurio JavaScript kas minutę gauna naujas korteles. #}
     <div id="dashboard" data-refresh-url="{% url 'dashboard_data' %}"
          data-prices-url="{% url 'stock_prices' %}">
@@ -57,7 +82,8 @@
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
 
-<script src="{% static 'dashboard/charts.js' %}?v=6"></script>
+<script src="{% static 'dashboard/charts.js' %}?v=7"></script>
+<script src="{% static 'dashboard/dashboard.js' %}"></script>
 {# Kainų srautai veikia atskirai nuo istorinių grafikų ir nereikalauja API rakto naršyklėje. #}
 <script src="{% static 'dashboard/prices.js' %}"></script>
 </body>
