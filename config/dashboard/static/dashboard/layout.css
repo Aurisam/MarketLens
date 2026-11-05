@@ -1,0 +1,175 @@
+/* Ribojame bendrą plotį, kad dideliame monitoriuje grafikai pernelyg neišsitemptų. */
+.marketlens-container {
+    max-width: 1200px;
+}
+
+.instrument-body {
+    padding: 0;
+}
+
+.instrument-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.instrument-title {
+    font-size: 1.125rem;
+}
+
+.instrument-price {
+    font-size: 1.25rem;
+}
+
+.instrument-header [data-price-status],
+.instrument-header [data-price-time] {
+    font-size: 0.75rem;
+}
+
+/* Kairė skiltis skirta informacijai, dešinė – žvakėms ir bendrai RSI laiko ašiai. */
+.instrument-layout {
+    display: grid;
+    grid-template-columns: minmax(260px, 31%) minmax(0, 1fr);
+    align-items: start;
+    gap: 1rem;
+    padding: 0.85rem;
+}
+
+.instrument-sidebar {
+    display: grid;
+    gap: 0.65rem;
+    min-width: 0;
+}
+
+.analysis-box {
+    padding: 0.7rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.4rem;
+    background: var(--bs-tertiary-bg);
+}
+
+.analysis-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Bootstrap spalvų kintamieji leidžia toms pačioms lentelėms veikti abiejose temose. */
+.analysis-box .table {
+    --bs-table-bg: transparent;
+    font-size: 0.8rem;
+    line-height: 1.35;
+}
+
+.analysis-box .badge {
+    font-size: 0.7rem;
+}
+
+.analysis-box th {
+    font-weight: 400;
+}
+
+.analysis-box td,
+.analysis-box th {
+    padding: 0.2rem 0.15rem;
+    vertical-align: middle;
+}
+
+.signal-summary thead th {
+    color: var(--bs-secondary-color);
+}
+
+.signal-summary td:last-child,
+.signal-summary th:last-child,
+.fundamental-summary td {
+    text-align: right;
+}
+
+.fundamental-summary th {
+    color: var(--bs-secondary-color);
+}
+
+.fundamental-summary td,
+.signal-summary td {
+    font-variant-numeric: tabular-nums;
+}
+
+.fundamental-summary td {
+    white-space: nowrap;
+}
+
+.signal-details,
+.fundamental-details {
+    margin-top: 0.4rem;
+    font-size: 0.8rem;
+}
+
+.signal-details summary,
+.fundamental-details summary {
+    color: var(--bs-secondary-color);
+    cursor: pointer;
+}
+
+.signal-explanations {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.signal-explanation {
+    border-top: 1px solid var(--bs-border-color);
+    padding-top: 0.5rem;
+}
+
+.instrument-updated,
+.chart-help {
+    font-size: 0.75rem;
+}
+
+.instrument-chart-panel,
+.chart-stack {
+    min-width: 0;
+}
+
+.chart-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+}
+
+.chart-help {
+    margin-bottom: 0.4rem;
+}
+
+/* Canvas turi atskirus fiksuoto aukščio tėvus, kad Chart.js nedidintų visos kortelės. */
+.price-chart-pane {
+    position: relative;
+    height: 200px;
+}
+
+.rsi-chart-pane {
+    position: relative;
+    height: 120px;
+}
+
+/* Telefone ir siauresnėje planšetėje analizė rodoma virš grafiko. */
+@media (max-width: 991.98px) {
+    .instrument-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 575.98px) {
+    .instrument-header,
+    .instrument-layout {
+        padding: 0.7rem;
+    }
+}

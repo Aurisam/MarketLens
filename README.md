@@ -22,6 +22,7 @@ MarketLens – internetinė akcijų, ETF ir kriptovaliutų stebėjimo sistema. J
 - Duomenų patikros laikas ir vėluojančio atnaujinimo žymėjimas.
 - Trijų skaitmenų po kablelio tikslumas užuominose, rodomose užvedus ant žvakės.
 - Sujungti kainos ir RSI grafikai su viena matoma laiko ašimi.
+- Kompaktiškos kortelės: signalai ir akcijų fundamentalai kairėje, žvakių bei RSI grafikai dešinėje.
 - Sinchronizuotas grafikų priartinimas, atitolinimas, slinkimas ir pradinio vaizdo atkūrimas.
 - Tamsi ir šviesi tema su naršyklėje išsaugomu pasirinkimu.
 - Instrumentų valdymas per Django administravimo sąsają.
@@ -77,6 +78,8 @@ Balas ≥ 2 reiškia Bullish, ≤ -2 Bearish, kitais atvejais Neutral. Bendram b
 Duomenys gaunami iš Yahoo Finance naudojant laikiną serverio sesiją. Mokamas API raktas nereikalingas. Rinkos atnaujinimo komanda patikrina ir fundamentalus: po sėkmės naujas gavimas leidžiamas po paros, po nesėkmės – po valandos. Šaltinio sutrikimo metu ankstesnės reikšmės išsaugomos su nesėkmingos patikros žyma. Lentelėje pateikiama šaltinio nuoroda, ketvirčio pabaiga, duomenų išsaugojimo ir patikros laikai. Trūkstami bei neteigiami P/E žymimi „No data“, nulinis ir neigiamas augimas išlieka skaitinėmis reikšmėmis.
 
 ## Sąrašo valdymas
+
+Kompiuterio ekrane instrumento kortelė padalyta į dvi skiltis. Kairėje iš karto pateikiama intervalų signalų ir RSI lentelė bei akcijų fundamentiniai rodikliai. Signalų priežastys, rodiklių laikotarpis ir šaltinis išskleidžiami atskirai. Dešinėje rodomas mažesnis žvakių grafikas su RSI apačioje ir bendra laiko ašimi. Bendras puslapio plotis ribojamas; siauresniame ekrane analizė išdėstoma virš grafikų.
 
 `dashboard.js` kartu taiko paiešką, turto tipą ir mėgstamų instrumentų filtrą. Mėgstamų instrumentų ID saugomi localStorage. Kai saugykla neprieinama, pasirinkimas veikia atidarytame puslapyje. Kortelių HTML atnaujinimas nekeičia valdiklių ir atkuria atvertus signalų bei fundamentinių duomenų blokus. Filtrą pakeitus vėl parodyti grafikai perskaičiuoja savo dydį.
 

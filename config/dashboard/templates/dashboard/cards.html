@@ -1,5 +1,5 @@
 {# Šis fragmentas naudojamas ir pradiniam puslapiui, ir /data/ atnaujinimo atsakymui. #}
-    <div class="row g-4" id="instrument-cards">
+    <div class="row g-3" id="instrument-cards">
         {# Kiekvienas instrumentas turi savo kortelę, mygtukus ir unikalius grafikų ID. #}
         {% for instrument in instruments %}
         <div class="col-12" data-instrument-item>
@@ -7,11 +7,11 @@
                  data-source="{{ instrument.data_source }}" data-symbol="{{ instrument.symbol }}"
                  data-name="{{ instrument.name }}" data-type="{{ instrument.instrument_type }}"
                  data-saved-price-time="{{ instrument.price_updated_at|date:'c' }}">
-                <div class="card-body">
+                <div class="card-body instrument-body">
 
-                    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+                    <div class="instrument-header">
                         <div>
-                            <h4 class="mb-1">
+                            <h4 class="instrument-title mb-1">
                                 {{ instrument.name }} ({{ instrument.symbol }})
                                 <button type="button" class="btn btn-sm btn-outline-secondary"
                                         data-favorite-id="{{ instrument.id }}" aria-pressed="false"
@@ -29,7 +29,7 @@
                         </div>
 
                         <div class="text-end">
-                        <h4 class="mb-0" data-live-price>
+                        <h4 class="instrument-price mb-0" data-live-price>
                             {% if instrument.price_available %}
                                 ${{ instrument.price|floatformat:2 }}
                             {% else %}
@@ -41,44 +41,50 @@
                         </div>
                     </div>
 
-                    {# ISO datos perduodamos JavaScript per data-local-time ir rodomos vartotojo laiko juostoje. #}
-                    <p class="small text-muted">
-                        {% if instrument.data_updated_at %}
-                            Last full update: <time data-local-time="{{ instrument.data_updated_at|date:'c' }}">{{ instrument.data_updated_at|date:"c" }}</time>.
-                        {% else %}
-                            Waiting for the first full data update.
+                    {# Kompiuteryje analizė užima apie trečdalį kortelės, o grafikai likusią vietą. #}
+                    <div class="instrument-layout">
+                    <aside class="instrument-sidebar" aria-label="{{ instrument.symbol }} analysis">
+                        <section class="analysis-box">
+                            <div class="analysis-heading">
+                                <h5 class="h6 mb-0">Signals</h5>
+                                <span class="badge {% if instrument.overall_signal.signal == 'Bullish' %}text-bg-success{% elif instrument.overall_signal.signal == 'Bearish' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
+                                    {{ instrument.overall_signal.signal|default:"No data" }}
+                                </span>
+                            </div>
+                            <table class="table table-sm signal-summary mb-0">
+                                <caption class="visually-hidden">Saved technical signals for {{ instrument.symbol }}</caption>
+                                <thead><tr><th scope="col">Interval</th><th scope="col">RSI</th><th scope="col">Signal</th></tr></thead>
+                                <tbody>
+                                    {% for row in instrument.analysis_rows %}
+                                    <tr>
+                                        <th scope="row">{{ row.timeframe }}</th>
+                                        <td>{% if row.rsi %}{{ row.rsi.rsi|floatformat:2 }}{% else %}N/A{% endif %}</td>
+                                        <td><span class="badge {% if row.analysis.signal == 'Bullish' %}text-bg-success{% elif row.analysis.signal == 'Bearish' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">{{ row.analysis.signal }}</span></td>
+                                    </tr>
+                                    {% empty %}<tr><td colspan="3">N/A</td></tr>{% endfor %}
+                                </tbody>
+                            </table>
+                            {% include "dashboard/signal_details.html" %}
+                        </section>
+                        {% if instrument.instrument_type == "Stock" %}
+                            {% include "dashboard/fundamentals.html" %}
                         {% endif %}
-                        {% if instrument.price_updated_at %}
-                            Price checked: <time data-local-time="{{ instrument.price_updated_at|date:'c' }}">{{ instrument.price_updated_at|date:"c" }}</time>.
-                        {% endif %}
-                    </p>
-
-                    {# Bendras signalas ir kiekvieno intervalo RSI apskaičiuojami Django pusėje. #}
-                    <div class="d-flex flex-wrap gap-2 my-3">
-                        <span class="badge text-bg-secondary">
-                            Overall: {{ instrument.overall_signal.signal }}
-                        </span>
-
-                        {% for timeframe, analysis in instrument.rsi.items %}
-                        <span class="badge text-bg-info">
-                            {{ timeframe }} saved RSI:
-                            {% if analysis %}
-                                {{ analysis.rsi }}
-                            {% else %}
-                                N/A
+                        {# Datos lieka vietinės ir po automatinio kortelių atnaujinimo. #}
+                        <p class="instrument-updated text-muted mb-0">
+                            {% if instrument.data_updated_at %}
+                                Saved analysis: <time data-local-time="{{ instrument.data_updated_at|date:'c' }}">{{ instrument.data_updated_at|date:'c' }}</time>.
+                            {% else %}Waiting for the first full data update.{% endif %}
+                            {% if instrument.price_updated_at %}
+                                Price checked: <time data-local-time="{{ instrument.price_updated_at|date:'c' }}">{{ instrument.price_updated_at|date:'c' }}</time>.
                             {% endif %}
-                        </span>
-                        {% endfor %}
-                    </div>
-                    {% include "dashboard/signal_details.html" %}
-                    {% if instrument.instrument_type == "Stock" %}
-                        {% include "dashboard/fundamentals.html" %}
-                    {% endif %}
+                        </p>
+                    </aside>
 
-                    <hr>
+                    <div class="instrument-chart-panel">
 
                     {# Intervalo keitimas naudoja jau į HTML įdėtus duomenis be papildomos API užklausos. #}
-                    <div class="btn-group btn-group-sm mb-3" role="group">
+                    <div class="chart-toolbar">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Chart interval">
                         {% for timeframe in instrument.chart_data %}
                         <button type="button"
                                 class="btn btn-outline-primary{% if forloop.first %} active{% endif %}"
@@ -89,7 +95,7 @@
                         {% endfor %}
                     </div>
 
-                    <div class="btn-group btn-group-sm mb-2 ms-2" role="group" aria-label="Chart zoom">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Chart zoom">
                         <button type="button" class="btn btn-outline-secondary"
                                 onclick="zoomCharts({{ instrument.id }}, 1.25)" aria-label="Zoom in">+</button>
                         <button type="button" class="btn btn-outline-secondary"
@@ -97,12 +103,13 @@
                         <button type="button" class="btn btn-outline-secondary"
                                 onclick="resetChartZoom({{ instrument.id }})">Reset zoom</button>
                     </div>
-                    <p class="small text-muted">Ctrl + scroll to zoom. Shift + drag to pan. Pinch to zoom on touchscreens.</p>
+                    </div>
+                    <p class="chart-help text-muted">Ctrl + scroll to zoom · Shift + drag to pan · Pinch on touchscreens</p>
 
-                    <h6>Price (candlesticks)</h6>
+                    <h6 class="visually-hidden">Price (candlesticks)</h6>
                     {# Gretimi kainos ir RSI grafikai turi susietą laiko intervalą ir vieną matomą X ašį apačioje. #}
                     <div class="chart-stack">
-                    <div style="height: 300px;">
+                    <div class="price-chart-pane">
 
                         {# Duomenų sąrašai perduodami per data atributus; charts.js juos paverčia skaičiais. #}
                         <canvas id="price-chart-{{ instrument.id }}"
@@ -120,7 +127,7 @@
                     </div>
 
                     {# RSI reikšmės naudoja tas pačias laiko žymas kaip kainos. #}
-                    <div class="border-top" style="height: 160px;">
+                    <div class="border-top rsi-chart-pane">
 
                         <canvas id="rsi-chart-{{ instrument.id }}"
                                 {% for timeframe, chart in instrument.chart_data.items %}
@@ -129,6 +136,8 @@
                                 {% endfor %}>
                         </canvas>
 
+                    </div>
+                    </div>
                     </div>
                     </div>
 

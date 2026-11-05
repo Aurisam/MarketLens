@@ -1,14 +1,14 @@
 {# Visų intervalų priežastys leidžia patikrinti bendro signalo skaičiavimą. #}
-<details class="border rounded p-3 mb-3" data-panel="signal-{{ instrument.id }}">
-    <summary class="fw-semibold">Why this signal?</summary>
+<details class="signal-details" data-panel="signal-{{ instrument.id }}">
+    <summary>Why this signal?</summary>
     <p class="small text-muted mt-2">
         Saved candle analysis. Live chart changes are calculated separately.
         Each interval is Bullish at a score of 2 or more, Bearish at -2 or less, and Neutral otherwise.
         At least two indicator groups are required.
     </p>
-    <div class="row g-3">
+    <div class="signal-explanations">
         {% for row in instrument.analysis_rows %}
-        <div class="col-12 col-lg-4">
+        <div class="signal-explanation">
             <h6>{{ row.timeframe }} · weight {{ row.weight }} · {{ row.analysis.signal }}</h6>
             <p class="small mb-1">Score: {{ row.analysis.score|default_if_none:"N/A" }} · Indicator groups: {{ row.analysis.indicators_available }}/3</p>
             <ul class="small ps-3">
