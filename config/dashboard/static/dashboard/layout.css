@@ -173,3 +173,19 @@
         padding: 0.7rem;
     }
 }
+
+/* Temos mygtukai ir trumpas kainų pokyčio paryškinimas. */
+[data-bs-theme="dark"] .btn-outline-secondary {
+    --bs-btn-color: #dee2e6;
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: #495057;
+    --bs-btn-hover-border-color: #adb5bd;
+}
+/* Krypties spalva trumpam parodo naujausią kainos pokytį. */
+.price-up { animation: price-up 1.2s ease-out; }
+.price-down { animation: price-down 1.2s ease-out; }
+@keyframes price-up { from { color: #198754; } to { color: inherit; } }
+@keyframes price-down { from { color: #dc3545; } to { color: inherit; } }
+@media (prefers-reduced-motion: reduce) {
+    .price-up, .price-down { animation: none; }
+}

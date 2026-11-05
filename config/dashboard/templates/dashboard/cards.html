@@ -1,48 +1,49 @@
 {# Šis fragmentas naudojamas ir pradiniam puslapiui, ir /data/ atnaujinimo atsakymui. #}
-    <div class="row g-3" id="instrument-cards">
-        {# Kiekvienas instrumentas turi savo kortelę, mygtukus ir unikalius grafikų ID. #}
-        {% for instrument in instruments %}
-        <div class="col-12" data-instrument-item>
-            <div class="card shadow-sm instrument-card" data-instrument-id="{{ instrument.id }}"
-                 data-source="{{ instrument.data_source }}" data-symbol="{{ instrument.symbol }}"
-                 data-name="{{ instrument.name }}" data-type="{{ instrument.instrument_type }}"
-                 data-saved-price-time="{{ instrument.price_updated_at|date:'c' }}">
-                <div class="card-body instrument-body">
+<div class="row g-3" id="instrument-cards">
+    {# Kiekvienas instrumentas turi savo kortelę, mygtukus ir unikalius grafikų ID. #}
+    {% for instrument in instruments %}
+    <div class="col-12" data-instrument-item>
+        <div class="card shadow-sm instrument-card" data-instrument-id="{{ instrument.id }}"
+             data-source="{{ instrument.data_source }}" data-symbol="{{ instrument.symbol }}"
+             data-name="{{ instrument.name }}" data-type="{{ instrument.instrument_type }}"
+             data-saved-price-time="{{ instrument.price_updated_at|date:'c' }}">
+            <div class="card-body instrument-body">
 
-                    <div class="instrument-header">
-                        <div>
-                            <h4 class="instrument-title mb-1">
-                                {{ instrument.name }} ({{ instrument.symbol }})
-                                <button type="button" class="btn btn-sm btn-outline-secondary"
-                                        data-favorite-id="{{ instrument.id }}" aria-pressed="false"
-                                        aria-label="Add {{ instrument.name }} to favorites">☆</button>
-                            </h4>
-                            <span class="text-muted">
-                                {{ instrument.instrument_type|title }}
-                            </span>
-                            {% if instrument.is_personal %}
-                            <form method="post" action="{% url 'remove_instrument' instrument.id %}" class="d-inline ms-2">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-sm btn-outline-secondary">Remove from my list</button>
-                            </form>
-                            {% endif %}
-                        </div>
+                <div class="instrument-header">
+                    <div>
+                        <h4 class="instrument-title mb-1">
+                            {{ instrument.name }} ({{ instrument.symbol }})
+                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                    data-favorite-id="{{ instrument.id }}" aria-pressed="false"
+                                    aria-label="Add {{ instrument.name }} to favorites">☆</button>
+                        </h4>
+                        <span class="text-muted">
+                            {{ instrument.instrument_type }}
+                        </span>
+                        {% if instrument.is_personal %}
+                        <form method="post" action="{% url 'remove_instrument' instrument.id %}" class="d-inline ms-2">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">Remove from my list</button>
+                        </form>
+                        {% endif %}
+                    </div>
 
-                        <div class="text-end">
+                    <div class="text-end">
                         <h4 class="instrument-price mb-0" data-live-price>
                             {% if instrument.price_available %}
-                                ${{ instrument.price|floatformat:2 }}
+                                {{ instrument.price|floatformat:2 }}
+                                {% if instrument.data_source == "Binance" %}USDT{% elif instrument.data_source == "Hyperliquid" %}USD{% endif %}
                             {% else %}
                                 Price unavailable
                             {% endif %}
                         </h4>
                         <div class="small text-muted" data-price-status role="status">Saved price</div>
                         <div class="small text-muted" data-price-time></div>
-                        </div>
                     </div>
+                </div>
 
-                    {# Kompiuteryje analizė užima apie trečdalį kortelės, o grafikai likusią vietą. #}
-                    <div class="instrument-layout">
+                {# Kompiuteryje analizė užima apie trečdalį kortelės, o grafikai likusią vietą. #}
+                <div class="instrument-layout">
                     <aside class="instrument-sidebar" aria-label="{{ instrument.symbol }} analysis">
                         <section class="analysis-box">
                             <div class="analysis-heading">
@@ -53,15 +54,27 @@
                             </div>
                             <table class="table table-sm signal-summary mb-0">
                                 <caption class="visually-hidden">Saved technical signals for {{ instrument.symbol }}</caption>
-                                <thead><tr><th scope="col">Interval</th><th scope="col">RSI</th><th scope="col">Signal</th></tr></thead>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Interval</th>
+                                        <th scope="col">RSI</th>
+                                        <th scope="col">Signal</th>
+                                    </tr>
+                                </thead>
                                 <tbody>
                                     {% for row in instrument.analysis_rows %}
                                     <tr>
                                         <th scope="row">{{ row.timeframe }}</th>
                                         <td>{% if row.rsi %}{{ row.rsi.rsi|floatformat:2 }}{% else %}N/A{% endif %}</td>
-                                        <td><span class="badge {% if row.analysis.signal == 'Bullish' %}text-bg-success{% elif row.analysis.signal == 'Bearish' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">{{ row.analysis.signal }}</span></td>
+                                        <td>
+                                            <span class="badge {% if row.analysis.signal == 'Bullish' %}text-bg-success{% elif row.analysis.signal == 'Bearish' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
+                                                {{ row.analysis.signal }}
+                                            </span>
+                                        </td>
                                     </tr>
-                                    {% empty %}<tr><td colspan="3">N/A</td></tr>{% endfor %}
+                                    {% empty %}
+                                    <tr><td colspan="3">N/A</td></tr>
+                                    {% endfor %}
                                 </tbody>
                             </table>
                             {% include "dashboard/signal_details.html" %}
@@ -82,72 +95,71 @@
 
                     <div class="instrument-chart-panel">
 
-                    {# Intervalo keitimas naudoja jau į HTML įdėtus duomenis be papildomos API užklausos. #}
-                    <div class="chart-toolbar">
-                    <div class="btn-group btn-group-sm" role="group" aria-label="Chart interval">
-                        {% for timeframe in instrument.chart_data %}
-                        <button type="button"
-                                class="btn btn-outline-primary{% if forloop.first %} active{% endif %}"
-                                data-timeframe="{{ timeframe }}"
-                                onclick="changeTimeframe({{ instrument.id }}, '{{ timeframe }}', this)">
-                            {{ timeframe }}
-                        </button>
-                        {% endfor %}
-                    </div>
+                        {# Intervalo keitimas naudoja jau į HTML įdėtus duomenis be papildomos API užklausos. #}
+                        <div class="chart-toolbar">
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Chart interval">
+                                {% for timeframe in instrument.chart_data %}
+                                <button type="button"
+                                        class="btn btn-outline-primary{% if forloop.first %} active{% endif %}"
+                                        data-timeframe="{{ timeframe }}"
+                                        onclick="changeTimeframe({{ instrument.id }}, '{{ timeframe }}', this)">
+                                    {{ timeframe }}
+                                </button>
+                                {% endfor %}
+                            </div>
 
-                    <div class="btn-group btn-group-sm" role="group" aria-label="Chart zoom">
-                        <button type="button" class="btn btn-outline-secondary"
-                                onclick="zoomCharts({{ instrument.id }}, 1.25)" aria-label="Zoom in">+</button>
-                        <button type="button" class="btn btn-outline-secondary"
-                                onclick="zoomCharts({{ instrument.id }}, 0.8)" aria-label="Zoom out">−</button>
-                        <button type="button" class="btn btn-outline-secondary"
-                                onclick="resetChartZoom({{ instrument.id }})">Reset zoom</button>
-                    </div>
-                    </div>
-                    <p class="chart-help text-muted">Ctrl + scroll to zoom · Shift + drag to pan · Pinch on touchscreens</p>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Chart zoom">
+                                <button type="button" class="btn btn-outline-secondary"
+                                        onclick="zoomCharts({{ instrument.id }}, 1.25)" aria-label="Zoom in">+</button>
+                                <button type="button" class="btn btn-outline-secondary"
+                                        onclick="zoomCharts({{ instrument.id }}, 0.8)" aria-label="Zoom out">−</button>
+                                <button type="button" class="btn btn-outline-secondary"
+                                        onclick="resetChartZoom({{ instrument.id }})">Reset zoom</button>
+                            </div>
+                        </div>
+                        <p class="chart-help text-muted">Ctrl + scroll to zoom · Shift + drag to pan · Pinch on touchscreens</p>
 
-                    <h6 class="visually-hidden">Price (candlesticks)</h6>
-                    {# Gretimi kainos ir RSI grafikai turi susietą laiko intervalą ir vieną matomą X ašį apačioje. #}
-                    <div class="chart-stack">
-                    <div class="price-chart-pane">
+                        <h6 class="visually-hidden">Price (candlesticks)</h6>
+                        {# Gretimi kainos ir RSI grafikai turi susietą laiko intervalą ir vieną matomą X ašį apačioje. #}
+                        <div class="chart-stack">
+                            <div class="price-chart-pane">
 
-                        {# Duomenų sąrašai perduodami per data atributus; charts.js juos paverčia skaičiais. #}
-                        <canvas id="price-chart-{{ instrument.id }}"
-                                {% for timeframe, chart in instrument.chart_data.items %}
-                                data-chart-{{ timeframe }}-labels="{{ chart.labels|join:',' }}"
-                                data-chart-{{ timeframe }}-prices="{{ chart.prices|join:',' }}"
-                                data-chart-{{ timeframe }}-opens="{{ chart.opens|join:',' }}"
-                                data-chart-{{ timeframe }}-highs="{{ chart.highs|join:',' }}"
-                                data-chart-{{ timeframe }}-lows="{{ chart.lows|join:',' }}"
-                                data-chart-{{ timeframe }}-sma20="{{ chart.sma20|join:',' }}"
-                                data-chart-{{ timeframe }}-sma50="{{ chart.sma50|join:',' }}"
-                                {% endfor %}>
-                        </canvas>
+                                {# Duomenų sąrašai perduodami per data atributus; charts.js juos paverčia skaičiais. #}
+                                <canvas id="price-chart-{{ instrument.id }}"
+                                        {% for timeframe, chart in instrument.chart_data.items %}
+                                        data-chart-{{ timeframe }}-labels="{{ chart.labels|join:',' }}"
+                                        data-chart-{{ timeframe }}-prices="{{ chart.prices|join:',' }}"
+                                        data-chart-{{ timeframe }}-opens="{{ chart.opens|join:',' }}"
+                                        data-chart-{{ timeframe }}-highs="{{ chart.highs|join:',' }}"
+                                        data-chart-{{ timeframe }}-lows="{{ chart.lows|join:',' }}"
+                                        data-chart-{{ timeframe }}-sma20="{{ chart.sma20|join:',' }}"
+                                        data-chart-{{ timeframe }}-sma50="{{ chart.sma50|join:',' }}"
+                                        {% endfor %}>
+                                </canvas>
 
+                            </div>
+
+                            {# RSI reikšmės naudoja tas pačias laiko žymas kaip kainos. #}
+                            <div class="border-top rsi-chart-pane">
+
+                                <canvas id="rsi-chart-{{ instrument.id }}"
+                                        {% for timeframe, chart in instrument.chart_data.items %}
+                                        data-chart-{{ timeframe }}-rsi="{{ chart.rsi|join:',' }}"
+                                        {% endfor %}>
+                                </canvas>
+
+                            </div>
+                        </div>
                     </div>
-
-                    {# RSI reikšmės naudoja tas pačias laiko žymas kaip kainos. #}
-                    <div class="border-top rsi-chart-pane">
-
-                        <canvas id="rsi-chart-{{ instrument.id }}"
-                                {% for timeframe, chart in instrument.chart_data.items %}
-                                data-chart-{{ timeframe }}-labels="{{ chart.labels|join:',' }}"
-                                data-chart-{{ timeframe }}-rsi="{{ chart.rsi|join:',' }}"
-                                {% endfor %}>
-                        </canvas>
-
-                    </div>
-                    </div>
-                    </div>
-                    </div>
-
                 </div>
+
             </div>
         </div>
-        {# Alternatyvus turinys, kai DB dar nėra stebimų instrumentų. #}
-        {% empty %}
-        <div class="col-12">
-            <p>No instruments added yet.</p>
-        </div>
-        {% endfor %}
     </div>
+    {# Alternatyvus turinys, kai DB dar nėra stebimų instrumentų. #}
+    {% empty %}
+    <div class="col-12">
+        <p>No instruments added yet.</p>
+    </div>
+    {% endfor %}
+</div>

@@ -173,13 +173,28 @@ function getChartValues(canvas, timeframe, field) {
     return readNumbers(canvas.getAttribute(`data-chart-${timeframe}-${field}`));
 }
 
+// Kiekvienai žvakei suskaičiuoja paskutinių period kainų vidurkį.
+function calculateMovingAverages(closes, period) {
+    const averages = [];
+    for (let index = 0; index < closes.length; index += 1) {
+        if (index + 1 < period) {
+            averages.push(null);
+            continue;
+        }
+        let sum = 0;
+        for (let position = index - period + 1; position <= index; position += 1) {
+            sum += closes[position];
+        }
+        averages.push(sum / period);
+    }
+    return averages;
+}
+
 // Skaičiuoja SMA ir Wilder RSI kiekvienam taškui, kai žvakė keičiasi tiesioginiame sraute.
 function calculateChartIndicators(candles) {
     const closes = candles.map(candle => candle.c);
-    const sma20 = closes.map((value, index) => index >= 19
-        ? closes.slice(index - 19, index + 1).reduce((sum, close) => sum + close, 0) / 20 : null);
-    const sma50 = closes.map((value, index) => index >= 49
-        ? closes.slice(index - 49, index + 1).reduce((sum, close) => sum + close, 0) / 50 : null);
+    const sma20 = calculateMovingAverages(closes, 20);
+    const sma50 = calculateMovingAverages(closes, 50);
     const rsi = closes.map(() => null);
     let gain = 0;
     let loss = 0;
@@ -195,7 +210,11 @@ function calculateChartIndicators(candles) {
             loss = (loss * 13 + down) / 14;
         }
         if (index >= 14) {
-            rsi[index] = loss === 0 ? (gain > 0 ? 100 : 50) : 100 - 100 / (1 + gain / loss);
+            if (loss === 0) {
+                rsi[index] = gain > 0 ? 100 : 50;
+            } else {
+                rsi[index] = 100 - 100 / (1 + gain / loss);
+            }
             rsi[index] = Math.round(rsi[index] * 100) / 100;
         }
     }
@@ -222,19 +241,6 @@ function getMergedCandles(id, timeframe, canvas) {
         }
     }
     return [...candles.values()].sort((first, second) => first.x - second.x).slice(-100);
-}
-
-// Žyma atskiria gyvą grafiką nuo iš DB išsaugotų bendro signalo ir kortelės RSI reikšmių.
-function updateCandleStatus(id) {
-    const canvas = document.getElementById(`price-chart-${id}`);
-    const status = canvas?.closest(".instrument-card").querySelector("[data-candle-status]");
-    if (!status) {
-        return;
-    }
-    const candles = liveCandleData[id]?.timeframes[selectedTimeframes[id] || "1h"];
-    status.textContent = candles?.length
-        ? `Live candles, SMA and RSI · ${formatLocalTime(candles.at(-1).updatedAt)}. Saved signal analysis is shown above.`
-        : "Saved candles and indicators. Waiting for the next data update.";
 }
 
 // Pakeičia aktyvaus grafiko duomenis jo neperkurdama ir išlaiko vartotojo pasirinktą priartinimą.
@@ -270,7 +276,6 @@ function updateLiveChart(id) {
         }
         chart.update("none");
     });
-    updateCandleStatus(id);
 }
 
 // Priima tik tikrą biržos OHLC žvakę; vien iš naujos kainos open/high/low neišgalvojami.
@@ -320,12 +325,16 @@ function createCharts(id, timeframe = "1h", savedView = null) {
 
     const candles = getMergedCandles(id, timeframe, priceCanvas);
     const times = candles.map(candle => candle.x);
-    const indicators = liveCandleData[id]?.timeframes[timeframe]
-        ? calculateChartIndicators(candles) : {
+    let indicators;
+    if (liveCandleData[id]?.timeframes[timeframe]) {
+        indicators = calculateChartIndicators(candles);
+    } else {
+        indicators = {
             sma20: getChartValues(priceCanvas, timeframe, "sma20"),
             sma50: getChartValues(priceCanvas, timeframe, "sma50"),
             rsi: getChartValues(rsiCanvas, timeframe, "rsi")
         };
+    }
     const {sma20, sma50, rsi} = indicators;
 
     // Neleidžiame priartinti labiau nei maždaug iki dviejų intervalų pločio.
@@ -470,7 +479,6 @@ function changeTimeframe(id, timeframe, button, savedView = null) {
     button.parentElement.querySelectorAll("button").forEach(timeframeButton => {
         timeframeButton.classList.toggle("active", timeframeButton === button);
     });
-    updateCandleStatus(id);
 }
 
 // Paruošia kortelių vietinį laiką bei grafikus pirmą kartą arba atnaujinus HTML.

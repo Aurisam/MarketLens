@@ -5,24 +5,44 @@
         <table class="table table-sm fundamental-summary mb-0">
             <caption class="visually-hidden">Company fundamentals for {{ instrument.symbol }}</caption>
             <tbody>
-                <tr><th scope="row">P/E · TTM</th><td>{% if fund.trailing_pe != None %}{{ fund.trailing_pe|floatformat:2 }}{% else %}No data{% endif %}</td></tr>
-                <tr><th scope="row">Forward P/E</th><td>{% if fund.forward_pe != None %}{{ fund.forward_pe|floatformat:2 }}{% else %}No data{% endif %}</td></tr>
-                <tr><th scope="row">Revenue growth · YoY</th><td>{% if fund.revenue_growth_percent != None %}{{ fund.revenue_growth_percent|floatformat:2 }}%{% else %}No data{% endif %}</td></tr>
-                <tr><th scope="row">Earnings growth · YoY</th><td>{% if fund.earnings_growth_percent != None %}{{ fund.earnings_growth_percent|floatformat:2 }}%{% else %}No data{% endif %}</td></tr>
+                <tr>
+                    <th scope="row">P/E · TTM</th>
+                    <td>{% if fund.trailing_pe != None %}{{ fund.trailing_pe|floatformat:2 }}{% else %}No data{% endif %}</td>
+                </tr>
+                <tr>
+                    <th scope="row">Forward P/E</th>
+                    <td>{% if fund.forward_pe != None %}{{ fund.forward_pe|floatformat:2 }}{% else %}No data{% endif %}</td>
+                </tr>
+                <tr>
+                    <th scope="row">Revenue growth · YoY</th>
+                    <td>{% if fund.revenue_growth_percent != None %}{{ fund.revenue_growth_percent|floatformat:2 }}%{% else %}No data{% endif %}</td>
+                </tr>
+                <tr>
+                    <th scope="row">Earnings growth · YoY</th>
+                    <td>{% if fund.earnings_growth_percent != None %}{{ fund.earnings_growth_percent|floatformat:2 }}%{% else %}No data{% endif %}</td>
+                </tr>
             </tbody>
         </table>
-    {% if fund and not fund.last_fetch_succeeded %}<p class="small text-warning mb-0">Source unavailable; previously saved values are retained.</p>{% endif %}
+    {% if fund and not fund.last_fetch_succeeded %}
+        <p class="small text-warning mb-0">Source unavailable; previously saved values are retained.</p>
+    {% endif %}
     <details class="fundamental-details" data-panel="fundamentals-{{ instrument.id }}">
-    <summary>Period and source</summary>
-    <p class="small text-muted mb-0">
-        P/E: price / trailing 12-month earnings per share. Forward P/E uses estimated earnings.
-        Growth: latest reported quarter compared with the same quarter a year earlier.
-        Source: <a href="{{ instrument.fundamental_url }}" target="_blank" rel="noopener noreferrer">Yahoo Finance</a>.
-        Latest reported quarter ended: {{ fund.period_end|date:"Y-m-d"|default:"No data" }}.
-        {% if fund.updated_at %}Saved: <time data-local-time="{{ fund.updated_at|date:'c' }}">{{ fund.updated_at|date:'c' }}</time>.{% else %}Waiting for the first fundamentals update.{% endif %}
-        {% if fund.checked_at %}Checked: <time data-local-time="{{ fund.checked_at|date:'c' }}">{{ fund.checked_at|date:'c' }}</time>.{% endif %}
-        Values are checked daily; missing or non-positive P/E values are shown as No data.
-    </p>
+        <summary>Period and source</summary>
+        <p class="small text-muted mb-0">
+            P/E: price / trailing 12-month earnings per share. Forward P/E uses estimated earnings.
+            Growth: latest reported quarter compared with the same quarter a year earlier.
+            Source: <a href="{{ instrument.fundamental_url }}" target="_blank" rel="noopener noreferrer">Yahoo Finance</a>.
+            Latest reported quarter ended: {{ fund.period_end|date:"Y-m-d"|default:"No data" }}.
+            {% if fund.updated_at %}
+                Saved: <time data-local-time="{{ fund.updated_at|date:'c' }}">{{ fund.updated_at|date:'c' }}</time>.
+            {% else %}
+                Waiting for the first fundamentals update.
+            {% endif %}
+            {% if fund.checked_at %}
+                Checked: <time data-local-time="{{ fund.checked_at|date:'c' }}">{{ fund.checked_at|date:'c' }}</time>.
+            {% endif %}
+            Values are checked daily; missing or non-positive P/E values are shown as No data.
+        </p>
     </details>
     {% endwith %}
 </section>

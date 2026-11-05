@@ -10,7 +10,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .models import Candle, Instrument
-from .services import get_instrument_candles, get_instrument_details
+from .services import TIMEFRAMES, get_instrument_candles, get_instrument_details
 
 COOKIE_NAME = "marketlens-instruments"
 COOKIE_SALT = "dashboard.watchlist"
@@ -26,36 +26,56 @@ def get_personal_ids(request):
     if request is None:
         return []
     saved = request.get_signed_cookie(COOKIE_NAME, default="", salt=COOKIE_SALT, max_age=COOKIE_AGE)
-    return list(dict.fromkeys(int(value) for value in saved.split(",")
-                             if value.isascii() and value.isdigit() and len(value) <= 10))[:PERSONAL_LIMIT]
+    ids = []
+    for value in saved.split(","):
+        if value.isascii() and value.isdigit() and len(value) <= 10:
+            instrument_id = int(value)
+            if instrument_id not in ids:
+                ids.append(instrument_id)
+        if len(ids) == PERSONAL_LIMIT:
+            break
+    return ids
 
 
 def set_personal_ids(response, ids):
     """Sąrašą išsaugo tik šios naršyklės slapuke; registracijos ir vartotojo DB įrašo nereikia."""
-    response.set_signed_cookie(COOKIE_NAME, ",".join(str(value) for value in ids), salt=COOKIE_SALT,
-                               max_age=COOKIE_AGE, httponly=True, secure=not settings.DEBUG, samesite="Lax")
+    value = ",".join(str(instrument_id) for instrument_id in ids)
+    response.set_signed_cookie(
+        COOKIE_NAME,
+        value,
+        salt=COOKIE_SALT,
+        max_age=COOKIE_AGE,
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="Lax",
+    )
 
 
 def visible_instruments(request=None):
     """Atrenka bendrus ir šios naršyklės instrumentus; privataus aktyvumą pažymi ne dažniau nei kartą per parą."""
     ids = get_personal_ids(request)
+    now = timezone.now()
     Instrument.objects.filter(pk__in=ids, is_public=False).filter(
-        Q(last_requested_at__isnull=True) | Q(last_requested_at__lt=timezone.now() - timedelta(days=1))
-    ).update(last_requested_at=timezone.now())
+        Q(last_requested_at__isnull=True) | Q(last_requested_at__lt=now - timedelta(days=1))
+    ).update(last_requested_at=now)
     return Instrument.objects.filter(Q(is_public=True) | Q(pk__in=ids)).order_by("pk")
 
 
 def active_instruments():
     """Periodinė užduotis praleidžia privačius simbolius, kurių niekas neatidarė septynias dienas."""
-    return Instrument.objects.filter(Q(is_public=True) | Q(last_requested_at__gte=timezone.now() - timedelta(days=ACTIVE_DAYS)))
+    active_since = timezone.now() - timedelta(days=ACTIVE_DAYS)
+    return Instrument.objects.filter(Q(is_public=True) | Q(last_requested_at__gte=active_since))
 
 
 def save_candles(instrument, interval, candles):
     """Atnaujina OHLC be dublikatų; privačiam instrumentui išlaiko tik 100 naujausių vieno intervalo žvakių."""
     rows = [Candle(instrument=instrument, interval=interval, **candle) for candle in candles]
-    Candle.objects.bulk_create(rows, update_conflicts=True,
-                               unique_fields=["instrument", "interval", "open_time"],
-                               update_fields=["open", "high", "low", "close"])
+    Candle.objects.bulk_create(
+        rows,
+        update_conflicts=True,
+        unique_fields=["instrument", "interval", "open_time"],
+        update_fields=["open", "high", "low", "close"],
+    )
     if not instrument.is_public:
         saved = Candle.objects.filter(instrument=instrument, interval=interval)
         keep = list(saved.order_by("-open_time").values_list("pk", flat=True)[:PRIVATE_CANDLE_LIMIT])
@@ -77,10 +97,15 @@ def register_instrument(source, symbol):
     if not details:
         raise ValidationError("Symbol not found on this market, or the source is temporarily unavailable. Check the symbol and try again.")
     name = details["name"] if isinstance(details["name"], str) else symbol
-    candidate = Instrument(name=name[:50], symbol=details.get("symbol", symbol), data_source=source,
-                           instrument_type=details["instrument_type"], is_public=False)
+    candidate = Instrument(
+        name=name[:50],
+        symbol=details.get("symbol", symbol),
+        data_source=source,
+        instrument_type=details["instrument_type"],
+        is_public=False,
+    )
     history = {}
-    for interval in ["1h", "4h", "1d"]:
+    for interval in TIMEFRAMES:
         try:
             history[interval] = get_instrument_candles(candidate, interval=interval, limit=100, timeout=5)
         except (ValueError, TypeError, KeyError, IndexError, OverflowError):

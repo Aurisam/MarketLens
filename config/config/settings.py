@@ -140,13 +140,3 @@ STORAGES = {
         'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage' if DEBUG else 'whitenoise.storage.CompressedManifestStaticFilesStorage',
     },
 }
-
-
-# Laiškų turinys šioje konfigūracijoje išvedamas į serverio konsolę.
-# https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
-
-MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-    },
-}

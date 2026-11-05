@@ -19,7 +19,7 @@ MarketLens – internetinė akcijų, ETF ir kriptovaliutų stebėjimo sistema. J
 - Kainos krypties, atskirų intervalų ir bendras techninis signalas.
 - Išskleidžiami signalų paaiškinimai su kiekvieno indikatoriaus balais bei intervalų svoriais.
 - Akcijų P/E, forward P/E, ketvirčio pajamų ir pelno augimas su šaltiniu bei laikotarpiu.
-- Duomenų patikros laikas ir vėluojančio atnaujinimo žymėjimas.
+- Duomenų išsaugojimo, kainų patikros ir ryšio būsenos rodymas.
 - Trijų skaitmenų po kablelio tikslumas užuominose, rodomose užvedus ant žvakės.
 - Sujungti kainos ir RSI grafikai su viena matoma laiko ašimi.
 - Kompaktiškos kortelės: signalai ir akcijų fundamentalai kairėje, žvakių bei RSI grafikai dešinėje.
@@ -55,7 +55,7 @@ Instrumento, intervalo ir žvakės pradžios laiko derinys yra unikalus. Pakarto
 
 Binance ir Hyperliquid taip pat siunčia 1h, 4h bei 1d žvakes tiesiai naršyklei. Grafikas sujungia jas su DB istorija pagal žvakės pradžios laiką, palikdamas naujausius 100 taškų. Open, high ir low paimami iš biržos OHLC srauto. Keičiantis žvakei perskaičiuojami grafiko SMA ir Wilder RSI, o pasirinktas priartinimas išlieka. Naršyklės gyvos žvakės į DB nerašomos; istorijos saugojimą tęsia periodinė serverio komanda. Srautui nutrūkus atkuriamos prenumeratos, o turima istorija lieka ekrane.
 
-Grafikų X ašyje pateikiamas žvakės pradžios laikas vartotojo naršyklės laiko juostoje. Taip pat vietiniu laiku rodomi duomenų patikros laikai. Laiko juosta nustatoma automatiškai, naudojant naršyklės Intl API. Duomenų patikros laikas saugomas atskirai. Praėjus daugiau nei 30 minučių nuo paskutinio sėkmingo pilno atnaujinimo, puslapyje parodoma vėlavimo žyma.
+Grafikų X ašyje pateikiamas žvakės pradžios laikas vartotojo naršyklės laiko juostoje. Taip pat vietiniu laiku rodomi duomenų patikros laikai. Laiko juosta nustatoma automatiškai, naudojant naršyklės Intl API. Kainos gavimo ir pilno duomenų atnaujinimo laikai saugomi atskirai.
 
 Atidarytas puslapis kas minutę gauna atnaujintas instrumentų korteles per Django maršrutą `/data/`. Kainų grafikai, RSI ir signalai atnaujinami neperkraunant viso puslapio. Pasirinktas instrumento intervalas ir priartinta grafikų sritis išsaugomi pagal instrumento ID. Nepavykus užklausai, lieka ankstesni grafikai ir kitą minutę bandoma dar kartą. Kol naršyklės kortelė paslėpta, periodinės užklausos sustabdomos.
 
@@ -69,7 +69,7 @@ Yahoo kainų JSON maršrutas `/prices/` tikrinamas kas 45 sekundes; sėkmingi at
 
 Vieno intervalo balą sudaro pirmos ir paskutinės žvakės kryptis, kainos pozicija SMA20 ir SMA50 atžvilgiu bei RSI. Kylanti kryptis prideda 1, krintanti atima 1, šoninė kryptis balo nekeičia. Kaina virš kiekvieno SMA prideda 1, ties juo ar žemiau atima 1. RSI ≥ 55 prideda 1, RSI ≤ 45 atima 1, tarpinės reikšmės balo nekeičia. Tai projekto pasirinktos taisyklės. Reikia bent dviejų indikatorių grupių; abi SMA reikšmės laikomos viena grupe.
 
-Balas ≥ 2 reiškia Bullish, ≤ -2 Bearish, kitais atvejais Neutral. Bendram balui naudojamas svertinis galiojančių intervalų vidurkis: 1h svoris 1, 4h svoris 2, 1d svoris 3. Bendro signalo ribos yra ±1.5. Išskleidžiamas paaiškinimas rodo kiekvieną priežastį, intervalų skaičių, svorių sumą ir jų sutapimą. Kortelių signalai bei „saved RSI“ remiasi DB istorija; gyvo grafiko rodikliai pažymėti atskirai.
+Balas ≥ 2 reiškia Bullish, ≤ -2 Bearish, kitais atvejais Neutral. Bendram balui naudojamas svertinis galiojančių intervalų vidurkis: 1h svoris 1, 4h svoris 2, 1d svoris 3. Bendro signalo ribos yra ±1.5. Išskleidžiamas paaiškinimas rodo kiekvieną priežastį, intervalų skaičių, svorių sumą ir jų sutapimą. Kortelių signalų lentelė remiasi DB istorija, o crypto grafiko rodikliai perskaičiuojami pagal gyvas žvakes. Išskleidžiamas signalų paaiškinimas nurodo šį skirtumą.
 
 ## Akcijų fundamentiniai duomenys
 
@@ -114,22 +114,26 @@ Grafikų priartinimą ir slinkimą valdo Chart.js zoom papildinys. Priartinimo m
 
 Django ORM naudojamas duomenų skaitymui ir rašymui. Duomenų bazės struktūros pakeitimai aprašyti migracijose. Serverio aplinkos kintamieji nustato DB prisijungimą ir produkcinius nustatymus. Render suteiktas domenas įtraukiamas automatiškai.
 
-## Patikros
+## Kodo struktūra
 
-Automatiniai testai tikrina API atsakymų apdorojimą, žvakių formatą, duomenų atnaujinimą be pasikartojimų, ankstesnių duomenų išsaugojimą po klaidos ir puslapio veikimą iš DB. Atskiri kainų testai tikrina Yahoo metaduomenis, kešą ir JSON maršruto veikimą nekeičiant DB istorijos. Indikatoriai tikrinami žinomomis SMA ir Wilder RSI reikšmėmis, o fundamentalai – su nulinio augimo, trūkstamų laukų ir šaltinio sutrikimo scenarijais.
+| Failas | Paskirtis |
+| --- | --- |
+| `models.py` | Instrumentų, žvakių ir fundamentinių rodiklių DB lentelės |
+| `services.py` | Rinkos API užklausos, kainų bei žvakių tikrinimas |
+| `indicators.py` | SMA, Wilder RSI ir paaiškinamų techninių signalų skaičiavimas |
+| `fundamentals.py` | Akcijų P/E ir augimo rodiklių gavimas bei retas atnaujinimas |
+| `watchlist.py` | Naršyklės instrumentų sąrašas, jo ribos ir žvakių saugojimas |
+| `forms.py` | Instrumento pridėjimo formos laukų tikrinimas |
+| `views.py` ir `urls.py` | Puslapių bei duomenų užklausų apdorojimas |
+| `management/commands/` | Periodinis rinkos duomenų ir fundamentalų atnaujinimas |
+| `templates/dashboard/` | Puslapio ir atnaujinamų kortelių HTML |
+| `charts.js` | Žvakės, SMA ir RSI grafikuose, priartinimas, vietinis laikas bei kortelių atnaujinimas |
+| `prices.js` | Gyvos crypto kainos ir žvakės, Yahoo kainų patikra, ryšių atkūrimas |
+| `dashboard.js` | Paieška, filtrai, mėgstami instrumentai ir išskleistų blokų būsena |
+| `theme.js` ir `layout.css` | Temos pasirinkimas ir kompaktiškas adaptyvus išdėstymas |
 
-Asmeninio sąrašo testai naudoja dvi atskiras naršykles. Tikrinama jų duomenų atskirtis, simbolių patikra, bendros istorijos panaudojimas, pašalinimas, CSRF, slapuko parašas, talpos ribos bei neaktyvių instrumentų praleidimas.
+Kodas naudoja paprastas funkcijas ir aiškius duomenų sąrašus. Funkcijų aprašymai bei komentarai paaiškina paskirtį ir svarbesnes taisykles. RSI formulė Python kode aprašyta vienoje vietoje ir naudojama tiek paskutinei reikšmei, tiek visai grafiko sekai. Naršyklėje atitinkami skaičiavimai vykdomi atskirai, kad crypto grafikai galėtų keistis sulig biržos žinutėmis.
 
-```sh
-python config/manage.py test dashboard
-```
+## Techninės patikros
 
-JavaScript patikros naudoja Node.js standartinius modulius, DOM bei tinklo imitacijas. Jos tikrina paiešką, mėgstamus instrumentus, kainų ryšius, gyvų žvakių ir indikatorių atnaujinimą, priartinimą bei HTML atnaujinimą.
-
-```sh
-node tests/prices.test.mjs
-node tests/dashboard.test.mjs
-node tests/charts.test.mjs
-```
-
-GitHub Actions `Project checks` paleidžia Python ir JavaScript patikras kiekvienam push bei pull request. Testai naudoja laikiną SQLite ir nesikreipia į produkcinę DB. Node.js naudojamas tik JavaScript patikroms; svetainę aptarnauja Django.
+GitHub Actions `Project checks` patikrina Django konfigūraciją, modelių ir migracijų atitikimą, JavaScript sintaksę bei statinių failų surinkimą. Šios patikros naudoja vietinę SQLite konfigūraciją ir nereikalauja produkcinės DB paslapčių. Atskirų automatinių elgsenos testų rinkinio projekte nėra; sintaksės bei konfigūracijos patikros nepatvirtina visų vartotojo veiksmų ir išorinių API veikimo.

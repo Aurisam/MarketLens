@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Django valdymo komandų įėjimo taškas: runserver, migrate, test ir update_market_data."""
+"""Django valdymo komandų įėjimo taškas: runserver, migrate ir update_market_data."""
 import os
 import sys
 

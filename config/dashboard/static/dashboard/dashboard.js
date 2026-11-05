@@ -66,10 +66,14 @@
     type.addEventListener("change", applyFilters);
     favoritesOnly.addEventListener("change", applyFilters);
     document.addEventListener("dashboardbeforerefresh", () => {
-        document.querySelectorAll("details[data-panel]").forEach(panel => { openPanels[panel.dataset.panel] = panel.open; });
+        document.querySelectorAll("details[data-panel]").forEach(panel => {
+            openPanels[panel.dataset.panel] = panel.open;
+        });
     });
     document.addEventListener("dashboardrefresh", () => {
-        document.querySelectorAll("details[data-panel]").forEach(panel => { panel.open = Boolean(openPanels[panel.dataset.panel]); });
+        document.querySelectorAll("details[data-panel]").forEach(panel => {
+            panel.open = Boolean(openPanels[panel.dataset.panel]);
+        });
         applyFilters();
     });
     window.addEventListener("storage", event => {

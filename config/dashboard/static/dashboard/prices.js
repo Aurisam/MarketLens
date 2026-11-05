@@ -22,11 +22,12 @@
         return pageActive && !document.hidden && navigator.onLine;
     }
 
-    // Formatuoja kainą; Binance poros kotiruojamos USDT, todėl ši valiuta nurodoma tiesiogiai.
+    // Rodo šaltinio vienetą: USDT, Yahoo valiutą ar Hyperliquid USD.
     function formatQuote(quote, source) {
-        if (source === "Binance") {
+        if (source === "Binance" || source === "YahooFinance") {
+            const unit = source === "Binance" ? "USDT" : quote.currency;
             return new Intl.NumberFormat(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 3})
-                .format(quote.price) + " USDT";
+                .format(quote.price) + " " + unit;
         }
         return new Intl.NumberFormat(undefined, {
             style: "currency", currency: quote.currency, minimumFractionDigits: 2, maximumFractionDigits: 3
@@ -49,14 +50,21 @@
         if (!canConnect()) {
             status = navigator.onLine ? "Updates paused" : "Offline — showing last price";
         } else if (source === "YahooFinance") {
-            status = yahooErrors[id] ? "Yahoo unavailable — showing last price"
-                : quote ? "Yahoo · checked every 45s · may be delayed" : "Yahoo · checking price…";
+            if (yahooErrors[id]) {
+                status = "Yahoo unavailable — showing last price";
+            } else if (quote) {
+                status = "Yahoo · checked every 45s · may be delayed";
+            } else {
+                status = "Yahoo · checking price…";
+            }
         } else if (source === "Binance" || source === "Hyperliquid") {
             const stream = streams[source];
             const fresh = quote && Date.now() - quote.receivedAt < 30000;
-            status = stream?.status === "Connected"
-                ? fresh ? `Live · ${source}` : "Connected — waiting for price…"
-                : stream?.status || "Connecting…";
+            if (stream?.status === "Connected") {
+                status = fresh ? `Live · ${source}` : "Connected — waiting for price…";
+            } else {
+                status = stream?.status || "Connecting…";
+            }
         } else {
             status = "Saved price";
         }
@@ -65,7 +73,8 @@
 
     // Atmeta netinkamas ar atgal laike einančias kainas, o pokytį trumpai paryškina spalva.
     function updateQuote(card, quote) {
-        if (!Number.isFinite(quote.price) || quote.price <= 0 || !Number.isFinite(quote.receivedAt)) {
+        if (!Number.isFinite(quote.price) || quote.price <= 0
+            || !Number.isFinite(quote.priceTime) || !Number.isFinite(quote.receivedAt)) {
             return;
         }
         const id = card.dataset.instrumentId;
@@ -254,12 +263,14 @@
             }
             const data = await response.json();
             // Pirma pažymime visus kaip negautus, kad trūkstamas įrašas neatrodytų sėkmingas.
-            getCards("YahooFinance").forEach(card => { yahooErrors[card.dataset.instrumentId] = true; });
+            getCards("YahooFinance").forEach(card => {
+                yahooErrors[card.dataset.instrumentId] = true;
+            });
             data.quotes.forEach(item => {
                 const card = getCards("YahooFinance").find(card => card.dataset.instrumentId === String(item.id));
                 const quote = item.quote;
                 if (card && quote && Number.isFinite(quote.price_time) && Number.isFinite(quote.checked_at)
-                    && Number.isFinite(quote.price) && quote.price > 0 && /^[A-Z]{3}$/.test(quote.currency)) {
+                    && Number.isFinite(quote.price) && quote.price > 0 && /^[A-Za-z]{3}$/.test(quote.currency)) {
                     yahooErrors[item.id] = false;
                     updateQuote(card, {
                         price: quote.price, priceTime: quote.price_time,
@@ -268,7 +279,9 @@
                 }
             });
         } catch (error) {
-            getCards("YahooFinance").forEach(card => { yahooErrors[card.dataset.instrumentId] = true; });
+            getCards("YahooFinance").forEach(card => {
+                yahooErrors[card.dataset.instrumentId] = true;
+            });
         } finally {
             clearTimeout(timeout);
             priceRequest = null;
@@ -309,8 +322,14 @@
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("online", handleVisibility);
     window.addEventListener("offline", handleVisibility);
-    window.addEventListener("pagehide", () => { pageActive = false; handleVisibility(); });
-    window.addEventListener("pageshow", () => { pageActive = true; handleVisibility(); });
+    window.addEventListener("pagehide", () => {
+        pageActive = false;
+        handleVisibility();
+    });
+    window.addEventListener("pageshow", () => {
+        pageActive = true;
+        handleVisibility();
+    });
     syncStreams();
     refreshStockPrices();
 })();

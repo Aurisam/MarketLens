@@ -1,57 +1,51 @@
 """Puslapiai skaito istoriją iš DB; atskiras kainų maršrutas tikrina naujausias Yahoo kainas."""
 
-from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
-from django.shortcuts import render, redirect
-from django.utils import timezone
+from django.shortcuts import redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import Instrument
 from .forms import AddInstrumentForm
-from .watchlist import get_personal_ids, set_personal_ids, visible_instruments, register_instrument, PERSONAL_LIMIT
-from .services import (
+from .models import Instrument
+from .watchlist import (
+    PERSONAL_LIMIT,
+    get_personal_ids,
+    register_instrument,
+    set_personal_ids,
+    visible_instruments,
+)
+from .services import TIMEFRAMES, get_stock_quote
+from .indicators import (
+    TIMEFRAME_WEIGHTS,
     get_chart_data,
-    get_instrument_timeframes,
     get_rsi_analysis,
     get_sma_analysis,
     get_simple_trend,
     get_overall_signal,
     get_signal_consensus,
     get_timeframe_signal,
-    get_stock_quote,
 )
 
 
 def get_dashboard_instruments(request=None):
-    """Prideda instrumentams grafikų duomenis, indikatorius, signalus ir duomenų senumo žymą."""
+    """Prideda instrumentams grafikų duomenis, indikatorius ir paaiškinamus signalus."""
     instruments = visible_instruments(request).select_related("fundamentals")
 
     for instrument in instruments:
         instrument.is_personal = not instrument.is_public
-        timeframes = get_instrument_timeframes(instrument)
         instrument.price = instrument.last_price
         instrument.price_available = instrument.price is not None
-        # Po 30 minučių be pilno atnaujinimo kortelėje parodomas duomenų senumo pranešimas.
-        instrument.data_is_stale = (
-            instrument.data_updated_at is None
-            or timezone.now() - instrument.data_updated_at > timedelta(minutes=30)
-        )
-
         instrument.chart_data = {}
-        instrument.trends = {}
-        instrument.sma = {}
-        instrument.rsi = {}
-        instrument.signals = {}
         instrument.analysis_rows = []
+        signals = {}
 
         # Kiekvienam intervalui paruošiama atskira kainų ir indikatorių seka.
-        for timeframe in timeframes:
+        for timeframe in TIMEFRAMES:
             candles = list(
                 instrument.candles.filter(interval=timeframe)
                 .order_by("-open_time")
@@ -60,43 +54,27 @@ def get_dashboard_instruments(request=None):
             # DB paimame 100 naujausių, o skaičiavimams apverčiame į seniausios–naujausios tvarką.
             candles.reverse()
             instrument.chart_data[timeframe] = get_chart_data(candles)
-            instrument.trends[timeframe] = get_simple_trend(candles)
-            instrument.sma[timeframe] = get_sma_analysis(candles)
-            instrument.rsi[timeframe] = get_rsi_analysis(candles)
-            instrument.signals[timeframe] = get_timeframe_signal(
-                instrument.trends.get(timeframe),
-                instrument.sma.get(timeframe),
-                instrument.rsi.get(timeframe),
-            )
+            trend = get_simple_trend(candles)
+            sma = get_sma_analysis(candles)
+            rsi = get_rsi_analysis(candles)
+            signals[timeframe] = get_timeframe_signal(trend, sma, rsi)
             instrument.analysis_rows.append({
                 "timeframe": timeframe,
-                "weight": {"1h": 1, "4h": 2, "1d": 3}[timeframe],
-                "sma": instrument.sma[timeframe],
-                "rsi": instrument.rsi[timeframe],
-                "analysis": instrument.signals[timeframe],
+                "weight": TIMEFRAME_WEIGHTS[timeframe],
+                "sma": sma,
+                "rsi": rsi,
+                "analysis": signals[timeframe],
             })
 
-        instrument.overall_signal = get_overall_signal(
-            instrument.signals
-        )
-
-        instrument.signal_consensus = get_signal_consensus(
-            instrument.signals
-        )
+        instrument.overall_signal = get_overall_signal(signals)
+        instrument.signal_consensus = get_signal_consensus(signals)
         instrument.fundamental_data = getattr(instrument, "fundamentals", None)
-        instrument.fundamental_url = f"https://finance.yahoo.com/quote/{quote(instrument.symbol, safe='')}/key-statistics/"
+        symbol = quote(instrument.symbol, safe="")
+        instrument.fundamental_url = f"https://finance.yahoo.com/quote/{symbol}/key-statistics/"
         if instrument.fundamental_data:
             saved = instrument.fundamental_data
             saved.revenue_growth_percent = saved.revenue_growth * 100 if saved.revenue_growth is not None else None
             saved.earnings_growth_percent = saved.earnings_growth * 100 if saved.earnings_growth is not None else None
-
-        # SMA analizėje išsaugome ir to paties intervalo paprastą kryptį.
-        for timeframe, analysis in instrument.sma.items():
-            if analysis:
-                analysis["trend"] = instrument.trends.get(
-                    timeframe,
-                    "No data",
-                )
 
     return instruments
 
@@ -123,8 +101,12 @@ def add_instrument(request):
     form = AddInstrumentForm(request.POST)
     if not form.is_valid():
         return render_home(request, form, status=400)
-    ids = list(Instrument.objects.filter(pk__in=get_personal_ids(request), is_public=False).values_list("pk", flat=True))
-    source, symbol = form.cleaned_data["source"], form.cleaned_data["symbol"]
+    ids = list(
+        Instrument.objects.filter(pk__in=get_personal_ids(request), is_public=False)
+        .values_list("pk", flat=True)
+    )
+    source = form.cleaned_data["source"]
+    symbol = form.cleaned_data["symbol"]
     existing = Instrument.objects.filter(data_source=source, symbol__iexact=symbol).first()
     if existing and (existing.is_public or existing.pk in ids):
         messages.info(request, "This instrument is already in your list.")

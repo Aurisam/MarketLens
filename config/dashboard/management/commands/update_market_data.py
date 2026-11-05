@@ -9,7 +9,7 @@ from django.utils import timezone
 from dashboard.models import Instrument
 from dashboard.watchlist import active_instruments, save_candles
 from dashboard.fundamentals import refresh_stock_fundamentals
-from dashboard.services import get_instrument_candles, get_instrument_price, get_instrument_timeframes
+from dashboard.services import TIMEFRAMES, get_instrument_candles, get_instrument_price
 
 
 class Command(BaseCommand):
@@ -24,7 +24,7 @@ class Command(BaseCommand):
             with transaction.atomic():
                 instrument = Instrument.objects.select_for_update().get(pk=instrument_id)
                 complete = True
-                for interval in get_instrument_timeframes(instrument):
+                for interval in TIMEFRAMES:
                     candles = get_instrument_candles(instrument, interval=interval, limit=100)
                     if not candles:
                         complete = False

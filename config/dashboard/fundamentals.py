@@ -7,7 +7,7 @@ from urllib.parse import quote
 import requests
 from django.utils import timezone
 
-from .models import Instrument, StockFundamentals
+from .models import StockFundamentals
 from .watchlist import active_instruments
 
 
