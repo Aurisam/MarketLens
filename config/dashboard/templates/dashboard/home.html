@@ -42,6 +42,31 @@
         Times shown in <span id="time-zone"></span>.
         <span id="refresh-status" role="status">Auto refresh enabled (every minute).</span>
     </p>
+    {# Forma naudoja Django CSRF apsaugą; asmeninis sąrašas saugomas tik šios naršyklės slapuke. #}
+    {% for message in messages %}
+    <div class="alert {% if message.tags == 'error' %}alert-danger{% else %}alert-info{% endif %}" role="status">{{ message }}</div>
+    {% endfor %}
+    <details class="border rounded p-3 mb-4" {% if add_instrument_form.errors %}open{% endif %}>
+        <summary class="fw-semibold">Add an instrument to my list</summary>
+        <p class="small text-muted mt-2">
+            Your extra instruments are shown only in this browser. No account required.
+            Clearing cookies resets this list. Up to {{ personal_limit }} extra instruments.
+        </p>
+        <form method="post" action="{% url 'add_instrument' %}" class="row g-3 align-items-end">
+            {% csrf_token %}
+            {% if add_instrument_form.non_field_errors %}<div class="col-12 text-danger" role="alert">{{ add_instrument_form.non_field_errors }}</div>{% endif %}
+            <div class="col-12 col-md-5">
+                <label class="form-label" for="{{ add_instrument_form.source.id_for_label }}">Market</label>
+                {{ add_instrument_form.source }}{{ add_instrument_form.source.errors }}
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label" for="{{ add_instrument_form.symbol.id_for_label }}">Symbol</label>
+                {{ add_instrument_form.symbol }}{{ add_instrument_form.symbol.errors }}
+            </div>
+            <div class="col-12 col-md-3"><button type="submit" class="btn btn-primary w-100">Add instrument</button></div>
+        </form>
+        <p class="small text-muted mt-2 mb-0">The symbol is checked on the selected market. Loading its first charts may take a few seconds.</p>
+    </details>
     {# Valdikliai yra už atnaujinamų kortelių ribų, todėl paieška nepradingsta kas minutę. #}
     <div class="row g-3 align-items-end mb-4">
         <div class="col-12 col-md-6">

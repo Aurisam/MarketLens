@@ -20,6 +20,12 @@
                             <span class="text-muted">
                                 {{ instrument.instrument_type|title }}
                             </span>
+                            {% if instrument.is_personal %}
+                            <form method="post" action="{% url 'remove_instrument' instrument.id %}" class="d-inline ms-2">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">Remove from my list</button>
+                            </form>
+                            {% endif %}
                         </div>
 
                         <div class="text-end">
@@ -41,9 +47,6 @@
                             Last full update: <time data-local-time="{{ instrument.data_updated_at|date:'c' }}">{{ instrument.data_updated_at|date:"c" }}</time>.
                         {% else %}
                             Waiting for the first full data update.
-                        {% endif %}
-                        {% if instrument.data_is_stale %}
-                            <span class="text-warning">Data update is overdue.</span>
                         {% endif %}
                         {% if instrument.price_updated_at %}
                             Price checked: <time data-local-time="{{ instrument.price_updated_at|date:'c' }}">{{ instrument.price_updated_at|date:"c" }}</time>.
@@ -97,9 +100,6 @@
                     <p class="small text-muted">Ctrl + scroll to zoom. Shift + drag to pan. Pinch to zoom on touchscreens.</p>
 
                     <h6>Price (candlesticks)</h6>
-                    <p class="small text-muted" data-candle-status>
-                        Saved candles and indicators{% if instrument.data_updated_at %} · <time data-local-time="{{ instrument.data_updated_at|date:'c' }}">{{ instrument.data_updated_at|date:'c' }}</time>{% endif %}.
-                    </p>
                     {# Gretimi kainos ir RSI grafikai turi susietą laiko intervalą ir vieną matomą X ašį apačioje. #}
                     <div class="chart-stack">
                     <div style="height: 300px;">

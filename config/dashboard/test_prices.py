@@ -104,3 +104,12 @@ class StockPriceViewTests(TestCase):
         self.assertContains(response, 'data-source="YahooFinance" data-symbol="NVDA"')
         self.assertContains(response, 'data-live-price')
         self.assertContains(response, '/static/dashboard/prices.js')
+
+    @patch("dashboard.views.get_stock_quote")
+    def test_parallel_quotes_keep_the_correct_instrument_ids(self, quote):
+        """Kelių simbolių API atsakymai nepriskiriami kitoms kortelėms, kai užklausos atliekamos kartu."""
+        prices = {"NVDA": 20, "SPY": 50}
+        quote.side_effect = lambda symbol: {"price": prices[symbol], "price_time": 1000, "checked_at": 2000, "currency": "USD"}
+        response = self.client.get("/prices/")
+        result = {item["id"]: item["quote"]["price"] for item in response.json()["quotes"]}
+        self.assertEqual(result, {self.stock.id: 20, self.etf.id: 50})

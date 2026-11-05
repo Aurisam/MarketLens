@@ -6,7 +6,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
-from dashboard.models import Candle, Instrument
+from dashboard.models import Instrument
+from dashboard.watchlist import active_instruments, save_candles
 from dashboard.fundamentals import refresh_stock_fundamentals
 from dashboard.services import get_instrument_candles, get_instrument_price, get_instrument_timeframes
 
@@ -18,7 +19,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         """Įrašo naujas žvakes ir kainas; dalinės API nesėkmės atveju išsaugo turimus duomenis."""
         failures = 0
-        for instrument_id in Instrument.objects.values_list("id", flat=True):
+        for instrument_id in active_instruments().values_list("id", flat=True):
             # Transakcija ir eilutės užraktas neleidžia dviem PostgreSQL užduotims kartu keisti to paties instrumento.
             with transaction.atomic():
                 instrument = Instrument.objects.select_for_update().get(pk=instrument_id)
@@ -30,16 +31,8 @@ class Command(BaseCommand):
                         self.stderr.write(f"{instrument.symbol} {interval}: no data; keeping saved candles.")
                         continue
 
-                    rows = [Candle(instrument=instrument, interval=interval, **candle) for candle in candles]
-                    # Įrašome žvakes viena užklausa; esamą žvakę atnaujiname pagal unikalų raktą.
-                    # Tai svarbu dar neužsidariusiai žvakei, kurios OHLC reikšmės keičiasi.
-                    Candle.objects.bulk_create(
-                        rows,
-                        update_conflicts=True,
-                        unique_fields=["instrument", "interval", "open_time"],
-                        update_fields=["open", "high", "low", "close"],
-                    )
-                    self.stdout.write(f"{instrument.symbol} {interval}: saved {len(rows)} candles.")
+                    save_candles(instrument, interval, candles)
+                    self.stdout.write(f"{instrument.symbol} {interval}: saved {len(candles)} candles.")
 
                 price = get_instrument_price(instrument)
                 if price is not None and math.isfinite(price) and price > 0:

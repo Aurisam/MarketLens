@@ -19,6 +19,9 @@ class Instrument(models.Model):
 
     name = models.CharField(max_length=50)
     symbol = models.CharField(max_length=20)
+    # Bendri instrumentai matomi visiems, privatūs – tik naršyklėms, kurios juos pasirinko.
+    is_public = models.BooleanField(default=True)
+    last_requested_at = models.DateTimeField(null=True, blank=True, editable=False)
 
     # Kaina ir jos laikas atnaujinami gavus kainą; data_updated_at tik sėkmingai gavus visus intervalus.
     last_price = models.FloatField(null=True, blank=True, editable=False)

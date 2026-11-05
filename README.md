@@ -25,6 +25,7 @@ MarketLens – internetinė akcijų, ETF ir kriptovaliutų stebėjimo sistema. J
 - Sinchronizuotas grafikų priartinimas, atitolinimas, slinkimas ir pradinio vaizdo atkūrimas.
 - Tamsi ir šviesi tema su naršyklėje išsaugomu pasirinkimu.
 - Instrumentų valdymas per Django administravimo sąsają.
+- Asmeninių instrumentų pridėjimas bei pašalinimas svetainėje be registracijos.
 
 ## Duomenų šaltiniai
 
@@ -79,11 +80,17 @@ Duomenys gaunami iš Yahoo Finance naudojant laikiną serverio sesiją. Mokamas 
 
 `dashboard.js` kartu taiko paiešką, turto tipą ir mėgstamų instrumentų filtrą. Mėgstamų instrumentų ID saugomi localStorage. Kai saugykla neprieinama, pasirinkimas veikia atidarytame puslapyje. Kortelių HTML atnaujinimas nekeičia valdiklių ir atkuria atvertus signalų bei fundamentinių duomenų blokus. Filtrą pakeitus vėl parodyti grafikai perskaičiuoja savo dydį.
 
+Svetainės pridėjimo forma priima Yahoo akcijų bei ETF, Binance USDT porų ir Hyperliquid pagrindinės perpetuals rinkos simbolius. Simbolis tikrinamas pasirinktoje platformoje, o Yahoo akcijos ar ETF tipas nustatomas automatiškai. Pradinė 1h, 4h ir 1d istorija gaunama pridėjimo metu. Jei negaunama pagrindinė 1h istorija, tuščias instrumento įrašas nekuriamas. Dalies intervalų sutrikimo atveju išsaugomi gauti duomenys, o likusius vėliau tikrina periodinė užduotis. Akcijų fundamentalai pirmą kartą gaunami periodinio atnaujinimo metu.
+
+Bendri administratoriaus instrumentai matomi visiems. Papildomi pasirinkimai saugomi vienos naršyklės pasirašytame HttpOnly slapuke, todėl jie atskiri ir puslapyje, ir `/data/` bei `/prices/` atsakymuose. Registracijos nėra; išvalius slapukus arba pakeitus naršyklę asmeninis sąrašas neperkeliamas. Pašalinus instrumentą iš sąrašo kito lankytojo pasirinkimas ir bendra simbolio istorija nepakeičiami.
+
+Tas pats simbolio ir šaltinio derinys serveryje naudojamas pakartotinai. Svetainės forma leidžia iki 10 asmeninių pasirinkimų naršyklei ir nekuria naujų registro įrašų pasiekus 30 instrumentų bendrą ribą. Privatiems instrumentams saugoma po 100 naujausių kiekvieno intervalo žvakių – iki 300 įrašų vienam instrumentui. Jų kainų bei fundamentinių duomenų atnaujinimas sustabdomas, jei instrumentas per naršyklių sąrašus nebuvo atidarytas 7 dienas. Sugrįžęs lankytojas vėl suaktyvina periodinį atnaujinimą. Šios ribos aprašytos `watchlist.py`; administratoriaus bendros istorijos saugojimo tvarka išlieka ankstesnė.
+
 Grafikų priartinimą ir slinkimą valdo Chart.js zoom papildinys. Priartinimo mygtukai keičia kainos ir RSI grafikų laiko ašį. Temos pasirinkimas saugomas naršyklės localStorage. Pirmą kartą tema parenkama pagal naršyklės sistemos spalvų nuostatą. Pasikeitus temai, pritaikomos ir grafikų spalvos.
 
 ## Duomenų modeliai
 
-**Instrument** saugo instrumento pavadinimą, simbolį, tipą, duomenų šaltinį, paskutinę kainą ir patikros laikus.
+**Instrument** saugo instrumento pavadinimą, simbolį, tipą, duomenų šaltinį, paskutinę kainą, patikros laikus, bendro rodymo požymį ir paskutinio privataus naudojimo laiką.
 
 **Candle** saugo ryšį su instrumentu, intervalą, pradžios laiką bei atidarymo, didžiausią, mažiausią ir uždarymo kainas. Unikalumo apribojimas apsaugo nuo pasikartojančių žvakių.
 
@@ -107,6 +114,8 @@ Django ORM naudojamas duomenų skaitymui ir rašymui. Duomenų bazės struktūro
 ## Patikros
 
 Automatiniai testai tikrina API atsakymų apdorojimą, žvakių formatą, duomenų atnaujinimą be pasikartojimų, ankstesnių duomenų išsaugojimą po klaidos ir puslapio veikimą iš DB. Atskiri kainų testai tikrina Yahoo metaduomenis, kešą ir JSON maršruto veikimą nekeičiant DB istorijos. Indikatoriai tikrinami žinomomis SMA ir Wilder RSI reikšmėmis, o fundamentalai – su nulinio augimo, trūkstamų laukų ir šaltinio sutrikimo scenarijais.
+
+Asmeninio sąrašo testai naudoja dvi atskiras naršykles. Tikrinama jų duomenų atskirtis, simbolių patikra, bendros istorijos panaudojimas, pašalinimas, CSRF, slapuko parašas, talpos ribos bei neaktyvių instrumentų praleidimas.
 
 ```sh
 python config/manage.py test dashboard

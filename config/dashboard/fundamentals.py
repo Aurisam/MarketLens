@@ -8,6 +8,7 @@ import requests
 from django.utils import timezone
 
 from .models import Instrument, StockFundamentals
+from .watchlist import active_instruments
 
 
 def read_number(value, positive=False):
@@ -72,7 +73,7 @@ def refresh_stock_fundamentals(force=False):
     """Atnaujina tik Yahoo akcijas: sėkmę tikrina po paros, nesėkmę pakartoja po valandos."""
     updated = 0
     failed = 0
-    for instrument in Instrument.objects.filter(instrument_type="Stock", data_source="YahooFinance"):
+    for instrument in active_instruments().filter(instrument_type="Stock", data_source="YahooFinance"):
         saved, _ = StockFundamentals.objects.get_or_create(instrument=instrument)
         now = timezone.now()
         retry_after = timedelta(days=1) if saved.last_fetch_succeeded else timedelta(hours=1)
