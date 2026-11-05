@@ -1,7 +1,11 @@
+{# Šis fragmentas naudojamas ir pradiniam puslapiui, ir /data/ atnaujinimo atsakymui. #}
     <div class="row g-4" id="instrument-cards">
+        {# Kiekvienas instrumentas turi savo kortelę, mygtukus ir unikalius grafikų ID. #}
         {% for instrument in instruments %}
         <div class="col-12">
-            <div class="card shadow-sm instrument-card">
+            <div class="card shadow-sm instrument-card" data-instrument-id="{{ instrument.id }}"
+                 data-source="{{ instrument.data_source }}" data-symbol="{{ instrument.symbol }}"
+                 data-saved-price-time="{{ instrument.price_updated_at|date:'c' }}">
                 <div class="card-body">
 
                     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
@@ -14,15 +18,20 @@
                             </span>
                         </div>
 
-                        <h4 class="mb-0">
+                        <div class="text-end">
+                        <h4 class="mb-0" data-live-price>
                             {% if instrument.price_available %}
                                 ${{ instrument.price|floatformat:2 }}
                             {% else %}
                                 Price unavailable
                             {% endif %}
                         </h4>
+                        <div class="small text-muted" data-price-status role="status">Saved price</div>
+                        <div class="small text-muted" data-price-time></div>
+                        </div>
                     </div>
 
+                    {# ISO datos perduodamos JavaScript per data-local-time ir rodomos vartotojo laiko juostoje. #}
                     <p class="small text-muted">
                         {% if instrument.data_updated_at %}
                             Last full update: <time data-local-time="{{ instrument.data_updated_at|date:'c' }}">{{ instrument.data_updated_at|date:"c" }}</time>.
@@ -37,6 +46,7 @@
                         {% endif %}
                     </p>
 
+                    {# Bendras signalas ir kiekvieno intervalo RSI apskaičiuojami Django pusėje. #}
                     <div class="d-flex flex-wrap gap-2 my-3">
                         <span class="badge text-bg-secondary">
                             Overall: {{ instrument.overall_signal.signal }}
@@ -56,6 +66,7 @@
 
                     <hr>
 
+                    {# Intervalo keitimas naudoja jau į HTML įdėtus duomenis be papildomos API užklausos. #}
                     <div class="btn-group btn-group-sm mb-3" role="group">
                         {% for timeframe in instrument.chart_data %}
                         <button type="button"
@@ -78,9 +89,11 @@
                     <p class="small text-muted">Ctrl + scroll to zoom. Shift + drag to pan. Pinch to zoom on touchscreens.</p>
 
                     <h6>Price (candlesticks)</h6>
+                    {# Gretimi kainos ir RSI grafikai turi susietą laiko intervalą ir vieną matomą X ašį apačioje. #}
                     <div class="chart-stack">
                     <div style="height: 300px;">
 
+                        {# Duomenų sąrašai perduodami per data atributus; charts.js juos paverčia skaičiais. #}
                         <canvas id="price-chart-{{ instrument.id }}"
                                 {% for timeframe, chart in instrument.chart_data.items %}
                                 data-chart-{{ timeframe }}-labels="{{ chart.labels|join:',' }}"
@@ -95,6 +108,7 @@
 
                     </div>
 
+                    {# RSI reikšmės naudoja tas pačias laiko žymas kaip kainos. #}
                     <div class="border-top" style="height: 160px;">
 
                         <canvas id="rsi-chart-{{ instrument.id }}"
@@ -110,6 +124,7 @@
                 </div>
             </div>
         </div>
+        {# Alternatyvus turinys, kai DB dar nėra stebimų instrumentų. #}
         {% empty %}
         <div class="col-12">
             <p>No instruments added yet.</p>

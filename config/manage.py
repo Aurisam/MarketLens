@@ -1,12 +1,13 @@
 #!/usr/bin/env python
-"""Django's command-line utility for administrative tasks."""
+"""Django valdymo komandų įėjimo taškas: runserver, migrate, test ir update_market_data."""
 import os
 import sys
 
 
 def main():
-    """Run administrative tasks."""
+    """Parenka nustatymus bei migracijų ryšį ir perduoda terminalo argumentus Django komandų vykdyklei."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+    # Migracijoms, jei pateiktas, naudojamas tiesioginis DB ryšys vietoje ryšių telkinio.
     if len(sys.argv) > 1 and sys.argv[1] == 'migrate':
         if os.getenv('DATABASE_URL_UNPOOLED'):
             os.environ['DATABASE_URL'] = os.environ['DATABASE_URL_UNPOOLED']

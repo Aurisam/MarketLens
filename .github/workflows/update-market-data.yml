@@ -1,6 +1,9 @@
+# GitHub vykdo duomenų atnaujinimą atskirai nuo Render svetainės užklausų.
 name: Update market data
 
 on:
+  # Rankinis paleidimas GitHub Actions lange ir periodinis UTC grafikas kas 15 minučių.
+  # Suplanuota užduotis gali prasidėti vėliau, jei GitHub vykdyklės užimtos.
   workflow_dispatch:
   schedule:
     - cron: '7,22,37,52 * * * *'
@@ -8,6 +11,7 @@ on:
 permissions:
   contents: read
 
+# Vienu metu vykdoma viena šios grupės užduotis; jau veikianti neatšaukiama.
 concurrency:
   group: market-data-update
   cancel-in-progress: false
@@ -16,6 +20,7 @@ jobs:
   update:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # GitHub paslaptis turi nurodyti tą pačią DB, kurią skaito Render aplikacija.
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
@@ -25,7 +30,9 @@ jobs:
           python-version: '3.13'
           cache: pip
       - run: pip install -r requirements.txt
+      # Tuščias URL neleidžiamas, kad komanda netyčia nerašytų į laikinos vykdyklės SQLite.
       - name: Require the shared server database
         run: test -n "$DATABASE_URL"
+      # Komanda gauna API duomenis ir juos įrašo į bendrą DB; į GitHub kainos neįkeliamos.
       - name: Update stored market data
         run: python config/manage.py update_market_data

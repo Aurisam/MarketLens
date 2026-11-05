@@ -1,10 +1,14 @@
+# Render paslaugos aprašas: Django puslapiai per Gunicorn, statiniai failai per WhiteNoise.
 services:
   - type: web
     name: marketlens
     runtime: python
     plan: free
+    # Diegimo metu įdiegiamos priklausomybės ir surenkami CSS bei JavaScript failai.
     buildCommand: pip install -r requirements.txt && python config/manage.py collectstatic --noinput
+    # Paleidžiant pritaikomos migracijos, tada HTTP užklausas priima du Gunicorn procesai.
     startCommand: cd config && python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --access-logfile -
+    # Slaptos reikšmės perduodamos per Render aplinką; sync: false reiškia įvedimą atskirai.
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.12
@@ -14,5 +18,6 @@ services:
         generateValue: true
       - key: DATABASE_URL
         sync: false
+      # Tiesioginį ryšį migrate komandai parenka manage.py.
       - key: DATABASE_URL_UNPOOLED
         sync: false

@@ -1,17 +1,58 @@
+"""Rinkos duomenų gavimas iš API, žvakių tikrinimas ir techninių indikatorių skaičiavimas."""
+
 import math
 import time
 import requests
 from django.core.cache import cache
 from urllib.parse import quote
 
-# Binance's public market-data API supports prices and candles without an API key.
+# Viešas Binance rinkos duomenų adresas leidžia gauti kainas ir žvakes be API rakto.
 BINANCE_API_URL = "https://data-api.binance.vision/api/v3"
 HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz/info"
 API_TIMEOUT_SECONDS = 10
 
 
+def get_stock_quote(symbol):
+    """Gauna naujausią Yahoo kainą ir jos laiką; trumpas kešas sumažina pakartotines užklausas."""
+    # Kainoms naudojamas atskiras kešas nuo istorinių žvakių, kurios saugomos penkias minutes.
+    cache_key = f"stock-quote:{symbol}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached or None
+
+    try:
+        response = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(symbol, safe='')}",
+            params={"interval": "1m", "range": "1d"},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=5,
+        )
+        response.raise_for_status()
+        meta = response.json()["chart"]["result"][0]["meta"]
+        price = float(meta["regularMarketPrice"])
+        price_time = int(meta["regularMarketTime"]) * 1000
+        checked_at = int(time.time() * 1000)
+        currency = meta.get("currency", "USD")
+        if (not math.isfinite(price) or price <= 0 or not 0 < price_time <= checked_at + 300000
+                or not isinstance(currency, str) or len(currency) != 3 or not currency.isalpha()):
+            raise ValueError("Invalid Yahoo quote")
+        result = {
+            "price": price,
+            "price_time": price_time,
+            "checked_at": checked_at,
+            "currency": currency.upper(),
+        }
+    except (requests.RequestException, ValueError, KeyError, IndexError, TypeError, OverflowError):
+        # Trumpam įsimenama ir nesėkmė, kad Yahoo sutrikimas nesukeltų užklausų lavinos.
+        cache.set(cache_key, False, timeout=15)
+        return None
+
+    cache.set(cache_key, result, timeout=30)
+    return result
+
+
 def get_crypto_price(symbol):
-    """Return the Binance price in USDT, or None if unavailable."""
+    """Grąžina Binance kriptovaliutos kainą USDT; nepavykus užklausai grąžina None."""
     url = f"{BINANCE_API_URL}/ticker/price"
     params = {"symbol": f"{symbol}USDT"}
 
@@ -32,7 +73,7 @@ def get_crypto_price(symbol):
 
 
 def get_hyperliquid_price(symbol):
-    """Return the Hyperliquid midpoint price, or None if unavailable."""
+    """Grąžina Hyperliquid vidurinę kainą; jos negavus grąžina None."""
     payload = {"type": "allMids", "dex": ""}
 
     try:
@@ -57,12 +98,13 @@ def get_hyperliquid_price(symbol):
 
 
 def group_four_hour_candles(hourly_candles):
+    """Sujungia valandines žvakes į iki keturių valandų grupes toje pačioje prekybos sesijoje."""
     grouped = []
     hour = 60 * 60 * 1000
     previous_time = None
     for candle in hourly_candles:
         opened = candle["open_time"]
-        # An overnight gap starts a new session, even after a short trading day.
+        # Ilgesnė nei valandos pertrauka pradeda naują sesiją, todėl skirtingų dienų žvakės nejungiamos.
         if not grouped or opened - previous_time > hour or opened - grouped[-1]["open_time"] >= 4 * hour:
             grouped.append(candle.copy())
         else:
@@ -75,14 +117,16 @@ def group_four_hour_candles(hourly_candles):
 
 
 def get_stock_candles(symbol, interval):
-    """Fetch stock and ETF candles from Yahoo Finance."""
+    """Gauna akcijos ar ETF žvakes iš Yahoo Finance; 4h žvakes sudaro iš 1h duomenų."""
     if interval == "4h":
         return group_four_hour_candles(get_stock_candles(symbol, "1h"))
 
+    # Valandinėms ir dieninėms žvakėms prašome skirtingo ilgio istorijos.
     ranges = {"1h": "3mo", "1d": "6mo"}
     if interval not in ranges:
         return []
 
+    # Trumpas serverio cache leidžia panaudoti tą patį Yahoo atsakymą 1h, 4h ir kainos gavimui.
     cache_key = f"stock-candles:{symbol}:{interval}"
     candles = cache.get(cache_key)
     if candles is not None:
@@ -99,6 +143,7 @@ def get_stock_candles(symbol, interval):
         result = response.json()["chart"]["result"][0]
         prices = result["indicators"]["quote"][0]
         candles = []
+        # Yahoo laiką pateikia sekundėmis, o šiame projekte visur naudojamos milisekundės.
         for index, timestamp in enumerate(result["timestamp"]):
             candles.append({
                 "open_time": timestamp * 1000,
@@ -111,16 +156,18 @@ def get_stock_candles(symbol, interval):
     except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
         candles = []
 
+    # Sėkmingi duomenys laikomi 5 minutes, nesėkmė tik 30 sekundžių, kad greičiau būtų bandoma dar kartą.
     cache.set(cache_key, candles, timeout=300 if candles else 30)
     return candles
 
 
 def get_instrument_timeframes(instrument):
+    """Grąžina visiems instrumentams naudojamus 1h, 4h ir 1d intervalus."""
     return ["1h", "4h", "1d"]
 
 
 def get_instrument_price(instrument):
-    """Choose the price API using the instrument’s saved data source."""
+    """Pagal instrumento duomenų šaltinį parenka kainos gavimo funkciją."""
     if instrument.data_source == "Hyperliquid":
         return get_hyperliquid_price(instrument.symbol)
 
@@ -136,7 +183,7 @@ def get_instrument_price(instrument):
 
 
 def get_binance_candles(symbol, interval="1h", limit=100):
-    """Fetch raw Binance candles. Return an empty list on API failure."""
+    """Gauna neapdorotas Binance žvakes; API klaidos atveju grąžina tuščią sąrašą."""
     url = f"{BINANCE_API_URL}/klines"
     params = {
         "symbol": f"{symbol}USDT",
@@ -165,8 +212,8 @@ def get_binance_candles(symbol, interval="1h", limit=100):
 
 
 def get_hyperliquid_candles(symbol, interval="1h", limit=100):
-    """Fetch raw Hyperliquid candles and keep the requested last candles."""
-    # Hyperliquid expects timestamps in milliseconds.
+    """Gauna Hyperliquid žvakes ir palieka ne daugiau kaip limit naujausių įrašų."""
+    # Hyperliquid laukia Unix laiko milisekundėmis, todėl sekundes dauginame iš 1000.
     end_time_ms = int(time.time() * 1000)
 
     payload = {
@@ -200,7 +247,7 @@ def get_hyperliquid_candles(symbol, interval="1h", limit=100):
 
 
 def get_formatted_hyperliquid_candles(symbol, interval="1h", limit=100):
-    """Convert Hyperliquid field names to the format used by the dashboard."""
+    """Hyperliquid laukus paverčia bendru open_time, open, high, low ir close formatu."""
     candles = get_hyperliquid_candles(symbol, interval=interval, limit=limit)
 
     formatted_candles = []
@@ -220,7 +267,7 @@ def get_formatted_hyperliquid_candles(symbol, interval="1h", limit=100):
 
 
 def get_formatted_binance_candles(symbol, interval="1h", limit=100):
-    """Convert Binance list positions to named dashboard fields."""
+    """Binance sąrašo pozicijas paverčia tais pačiais įvardytais žvakės laukais."""
     candles = get_binance_candles(symbol, interval=interval, limit=limit)
 
     formatted_candles = []
@@ -240,7 +287,7 @@ def get_formatted_binance_candles(symbol, interval="1h", limit=100):
 
 
 def get_instrument_candles(instrument, interval="1h", limit=100):
-    """Fetch, format, and validate candles from the saved data source."""
+    """Parenka API pagal šaltinį ir grąžina vienodo formato patikrintas žvakes."""
     if instrument.data_source == "YahooFinance":
         return get_stock_candles(instrument.symbol, interval)[-limit:]
     if instrument.data_source == "Binance":
@@ -262,6 +309,7 @@ def get_instrument_candles(instrument, interval="1h", limit=100):
 
 
 def get_simple_trend(candles):
+    """Nustato paprastą kryptį palygindama pirmos ir paskutinės žvakės uždarymo kainas."""
     if not candles:
         return "No data"
 
@@ -278,6 +326,7 @@ def get_simple_trend(candles):
 
 
 def calculate_sma(candles, period):
+    """Apskaičiuoja paskutinių period uždarymo kainų vidurkį; trūkstant žvakių grąžina None."""
     if len(candles) < period:
         return None
 
@@ -290,6 +339,7 @@ def calculate_sma(candles, period):
 
 
 def get_sma_analysis(candles):
+    """Apskaičiuoja SMA20 bei SMA50 ir patikrina, ar paskutinė kaina yra virš jų."""
     if len(candles) < 50:
         return None
 
@@ -307,6 +357,7 @@ def get_sma_analysis(candles):
 
 
 def calculate_rsi(candles, period=14):
+    """Apskaičiuoja paskutinį RSI pagal Wilder vidurkinimą; reikia bent period + 1 žvakių."""
     if len(candles) < period + 1:
         return None
 
@@ -320,6 +371,7 @@ def calculate_rsi(candles, period=14):
     gains = [max(change, 0) for change in changes]
     losses = [abs(min(change, 0)) for change in changes]
 
+    # Pirmam RSI naudojamas paprastas vidurkis, vėliau jis glodinamas Wilder formule.
     avg_gain = sum(gains[:period]) / period
     avg_loss = sum(losses[:period]) / period
 
@@ -343,6 +395,7 @@ def calculate_rsi(candles, period=14):
 
 
 def get_rsi_analysis(candles):
+    """Grąžina iki dviejų skaitmenų suapvalintą RSI ir jo reikšmės apibūdinimą."""
     rsi = calculate_rsi(candles)
 
     if rsi is None:
@@ -364,10 +417,11 @@ def get_rsi_analysis(candles):
 
 
 def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
+    """Sujungia krypties, SMA ir RSI balus į vieno intervalo signalą bei jo priežastis."""
     score = 0
     factors = []
 
-    # 1. Trend
+    # Kylanti kryptis prideda vieną balą, krintanti atima; šoninė kryptis balo nekeičia.
     if trend == "Uptrend":
         score += 1
         factors.append("Trend bullish")
@@ -375,7 +429,7 @@ def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
         score -= 1
         factors.append("Trend bearish")
 
-    # 2. SMA
+    # Kainos pozicija virš arba žemiau kiekvieno SMA prideda arba atima po vieną balą.
     if sma_analysis:
         if sma_analysis["price_above_sma20"]:
             score += 1
@@ -391,7 +445,7 @@ def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
             score -= 1
             factors.append("Price below SMA50")
 
-    # 3. RSI
+    # Signalo RSI ribos yra 55 ir 45; tai atskira taisyklė nuo 70/30 būsenų aprašymo.
     if rsi_analysis:
         rsi = rsi_analysis["rsi"]
 
@@ -404,6 +458,7 @@ def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
         else:
             factors.append("RSI neutral")
 
+    # Signalui reikia bent dviejų indikatorių grupių; SMA20 ir SMA50 čia laikomi viena grupe.
     indicators_available = sum([
         trend in ["Uptrend", "Downtrend", "Sideways"],
         bool(sma_analysis),
@@ -434,6 +489,8 @@ def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
 
 
 def get_overall_signal(timeframe_signals):
+    """Apskaičiuoja bendrą signalą, ilgesnių intervalų balams suteikdama didesnį svorį."""
+    # Dieninis signalas turi svorį 3, keturių valandų 2, valandinis 1.
     weights = {
         "1h": 1,
         "4h": 2,
@@ -471,11 +528,13 @@ def get_overall_signal(timeframe_signals):
     return {
         "score": score,
         "signal": signal,
+        # Šis laukas saugo panaudotų svorių sumą, o ne intervalų skaičių.
         "timeframes_used": total_weight,
     }
 
 
 def get_signal_consensus(timeframe_signals):
+    """Suskaičiuoja galiojančius intervalų signalus ir apibūdina jų tarpusavio sutapimą."""
     valid_signals = [
         data["signal"]
         for data in timeframe_signals.values()
@@ -512,6 +571,7 @@ def get_signal_consensus(timeframe_signals):
 
 
 def validate_candles(candles):
+    """Atmeta nepilnas ar nelogiškas žvakes ir likusias surikiuoja nuo seniausios."""
     if not isinstance(candles, list):
         return []
 
@@ -538,12 +598,14 @@ def validate_candles(candles):
             close_price,
         ]
 
+        # NaN, begalybė ir neigiamos ar nulinės kainos grafikams bei skaičiavimams netinka.
         if not all(math.isfinite(price) for price in prices):
             continue
 
         if min(prices) <= 0:
             continue
 
+        # Open ir close turi patekti tarp low ir high; laikas negali būti neigiamas.
         if low_price > min(open_price, close_price):
             continue
 
@@ -569,6 +631,7 @@ def validate_candles(candles):
 
 
 def get_chart_data(candles):
+    """Paruošia vienodo ilgio kainų, laiko, SMA ir RSI sąrašus grafikams."""
     if not candles:
         return {
             "labels": [],
@@ -587,6 +650,8 @@ def get_chart_data(candles):
     sma20 = []
     sma50 = []
 
+    # Kiekvieno taško SMA skaičiuojamas tik iš tuo metu jau buvusių kainų.
+    # Kol nesukaupta 20 ar 50 žvakių, None palieka tarpą grafiko linijoje.
     for i in range(len(closes)):
         if i >= 19:
             sma20.append(sum(closes[i - 19:i + 1]) / 20)
@@ -598,6 +663,7 @@ def get_chart_data(candles):
         else:
             sma50.append(None)
 
+    # RSI reikšmės turi atitikti tą patį laiko indeksą kaip ir kainos.
     rsi_values = [None] * len(closes)
     period = 14
 
@@ -614,6 +680,7 @@ def get_chart_data(candles):
         avg_loss = sum(losses[:period]) / period
 
         def calculate_rsi_value(gain, loss):
+            """Paverčia vidutinį kilimą ir kritimą į RSI; atskirai apdoroja nulinį kritimą."""
             if loss == 0:
                 return 100 if gain > 0 else 50
 

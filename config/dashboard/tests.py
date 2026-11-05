@@ -1,3 +1,5 @@
+"""API, šablonų ir duomenų saugojimo patikros; API atsakymai pakeičiami imitacijomis."""
+
 from types import SimpleNamespace
 from io import StringIO
 from unittest.mock import Mock, patch
@@ -12,9 +14,12 @@ from . import services
 from .models import Candle, Instrument
 
 
+# @patch pakeičia tinklo funkciją imitacija: testai nepriklauso nuo realių API ar rinkos kainų.
 class MarketDataTests(SimpleTestCase):
+    """Tikrina API užklausų parametrus, klaidų apdorojimą ir bendrą žvakių formatą."""
     @patch("dashboard.services.requests.get")
     def test_binance_price_request(self, mock_get):
+        """Patikrina, ar BTC kaina prašoma tinkamu adresu ir paverčiama skaičiumi."""
         mock_get.return_value = Mock(json=Mock(return_value={"price": "123.45"}))
 
         self.assertEqual(services.get_crypto_price("BTC"), 123.45)
@@ -27,6 +32,7 @@ class MarketDataTests(SimpleTestCase):
 
     @patch("dashboard.services.requests.get")
     def test_binance_api_failure_returns_no_data(self, mock_get):
+        """Patikrina, ar Binance ryšio klaida grąžina None arba tuščią žvakių sąrašą."""
         mock_get.side_effect = requests.RequestException("API unavailable")
 
         self.assertIsNone(services.get_crypto_price("BTC"))
@@ -34,6 +40,7 @@ class MarketDataTests(SimpleTestCase):
 
     @patch("dashboard.services.requests.post")
     def test_hyperliquid_price_request(self, mock_post):
+        """Patikrina Hyperliquid kainos užklausos turinį ir gautos kainos konvertavimą."""
         mock_post.return_value = Mock(json=Mock(return_value={"BTC": "123.45"}))
 
         self.assertEqual(services.get_hyperliquid_price("BTC"), 123.45)
@@ -47,6 +54,7 @@ class MarketDataTests(SimpleTestCase):
     @patch("dashboard.services.time.time", return_value=123)
     @patch("dashboard.services.requests.post")
     def test_hyperliquid_candles_request_and_limit(self, mock_post, mock_time):
+        """Patikrina laiką milisekundėmis ir prašomo naujausių žvakių kiekio ribojimą."""
         mock_post.return_value = Mock(json=Mock(return_value=[{"t": 1}, {"t": 2}]))
 
         self.assertEqual(services.get_hyperliquid_candles("BTC", "4h", 1), [{"t": 2}])
@@ -61,12 +69,14 @@ class MarketDataTests(SimpleTestCase):
 
     @patch("dashboard.services.requests.post")
     def test_hyperliquid_api_failure_returns_no_data(self, mock_post):
+        """Patikrina, ar Hyperliquid ryšio klaida tvarkingai grąžina duomenų nebuvimą."""
         mock_post.side_effect = requests.RequestException("API unavailable")
 
         self.assertIsNone(services.get_hyperliquid_price("BTC"))
         self.assertEqual(services.get_hyperliquid_candles("BTC"), [])
 
     def test_both_sources_produce_the_same_candle_format(self):
+        """Patikrina, ar skirtingi API atsakymai paverčiami vienoda žvakės struktūra."""
         instrument = SimpleNamespace(symbol="BTC", data_source="Binance")
         with patch("dashboard.services.get_binance_candles", return_value=[[1000, "10", "12", "9", "11"]]):
             binance_candles = services.get_instrument_candles(instrument)
@@ -84,7 +94,9 @@ class MarketDataTests(SimpleTestCase):
 
 
 class DashboardTemplateTests(SimpleTestCase):
+    """Tikrina instrumentų kortelių HTML, mygtukus ir grafikų duomenų atributus."""
     def test_each_instrument_has_its_own_buttons_and_chart_data(self):
+        """Patikrina atskirus instrumentų ID, intervalų mygtukus ir trūkstamų duomenų tekstus."""
         timeframes = ["1h", "4h", "1d"]
         chart = {"labels": [1000], "prices": [12], "opens": [10], "highs": [13], "lows": [9], "sma20": [None], "sma50": [None], "rsi": [None]}
         instrument = {
@@ -113,12 +125,15 @@ class DashboardTemplateTests(SimpleTestCase):
         self.assertIn("N/A", html)
 
     def test_empty_dashboard(self):
+        """Patikrina pranešimą, kai instrumentų sąrašas tuščias."""
         html = render_to_string("dashboard/home.html", {"instruments": []})
         self.assertIn("No instruments added yet.", html)
 
 
 class StoredMarketDataTests(TestCase):
+    """Laikinoje testų DB tikrina atnaujinimo komandą ir duomenų pateikimą puslapyje."""
     def setUp(self):
+        """Kiekvienam testui sukuria instrumentą ir 60 vienodos struktūros pavyzdinių žvakių."""
         self.instrument = Instrument.objects.create(
             name="Bitcoin", symbol="BTC", instrument_type="Crypto", data_source="Binance",
         )
@@ -128,11 +143,13 @@ class StoredMarketDataTests(TestCase):
         ]
 
     def update_data(self):
+        """Paleidžia atnaujinimo komandą, jos išvestį nukreipdama į atmintį."""
         call_command("update_market_data", stdout=StringIO(), stderr=StringIO())
 
     @patch("dashboard.management.commands.update_market_data.get_instrument_price", return_value=11)
     @patch("dashboard.management.commands.update_market_data.get_instrument_candles")
     def test_repeated_updates_replace_the_open_candle_without_duplicates(self, candles, price):
+        """Patikrina, ar pakartotinis atnaujinimas pakeičia žvakės reikšmę nekurdamas dublikato."""
         candles.return_value = self.candles
         self.update_data()
         self.candles[-1]["close"] = 12.0
@@ -146,6 +163,7 @@ class StoredMarketDataTests(TestCase):
     @patch("dashboard.management.commands.update_market_data.get_instrument_price", return_value=11)
     @patch("dashboard.management.commands.update_market_data.get_instrument_candles")
     def test_failure_keeps_saved_data_and_can_be_retried(self, candles, price):
+        """Patikrina senų duomenų išlaikymą po dalinės klaidos ir sėkmingą pakartojimą."""
         candles.return_value = self.candles
         self.update_data()
         self.instrument.refresh_from_db()
@@ -165,6 +183,7 @@ class StoredMarketDataTests(TestCase):
     @patch("dashboard.management.commands.update_market_data.get_instrument_price", return_value=11)
     @patch("dashboard.management.commands.update_market_data.get_instrument_candles")
     def test_page_uses_database_without_any_external_requests(self, candles, price):
+        """Patikrina, ar pradinis puslapis naudoja DB duomenis ir nesikreipia į išorinius API."""
         candles.return_value = self.candles
         self.update_data()
         with patch("requests.get", side_effect=AssertionError("Unexpected external request")), patch(
@@ -178,12 +197,14 @@ class StoredMarketDataTests(TestCase):
         self.assertContains(response, "$11.00")
 
     def test_page_with_no_saved_data(self):
+        """Patikrina puslapio tekstus instrumentui be išsaugotos kainos ar žvakių."""
         with patch("requests.get", side_effect=AssertionError("Unexpected external request")):
             response = self.client.get("/")
         self.assertContains(response, "Waiting for the first full data update.")
         self.assertContains(response, "Price unavailable")
 
     def test_refresh_reads_new_database_values_without_market_api_calls(self):
+        """Patikrina atnaujintą kortelių HTML, kešo draudimą ir tik GET užklausų priėmimą."""
         with patch("requests.get", side_effect=AssertionError("Unexpected API request")), patch(
             "requests.post", side_effect=AssertionError("Unexpected API request"),
         ):
