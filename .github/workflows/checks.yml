@@ -1,0 +1,41 @@
+# Tikrinama projekto konfigūracija ir failų sintaksė; produkcinės DB paslapčių nereikia.
+name: Project checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      DJANGO_DEBUG: "true"
+      DATABASE_URL: ""
+      DATABASE_URL_UNPOOLED: ""
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - run: pip install -r requirements.txt
+      - name: Check Django and migration files
+        run: |
+          python config/manage.py check
+          python config/manage.py makemigrations --check --dry-run
+      - name: Check JavaScript syntax
+        run: |
+          for file in config/dashboard/static/dashboard/*.js; do
+            node --check "$file"
+          done
+      - name: Check static file collection
+        run: python config/manage.py collectstatic --noinput
