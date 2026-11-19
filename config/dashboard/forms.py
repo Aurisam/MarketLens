@@ -1,11 +1,7 @@
-"""Viešos instrumento pridėjimo formos laukų ir simbolio tikrinimas."""
-
 from django import forms
 
 
 class AddInstrumentForm(forms.Form):
-    """Vartotojas nurodo simbolį ir platformą; pavadinimas bei tipas patikrinami pačioje platformoje."""
-
     source = forms.ChoiceField(
         label="Market",
         choices=[
@@ -26,7 +22,7 @@ class AddInstrumentForm(forms.Form):
     )
 
     def clean(self):
-        """Suvienodina raidžių dydį ir leidžia Binance įvesti tiek BTC, tiek BTCUSDT."""
+        """Normalize symbols and accept Binance names with or without USDT."""
         values = super().clean()
         if values.get("symbol"):
             symbol = values["symbol"].upper()

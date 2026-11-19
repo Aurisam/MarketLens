@@ -1,13 +1,11 @@
 #!/usr/bin/env python
-"""Django valdymo komandų įėjimo taškas: runserver, migrate ir update_market_data."""
 import os
 import sys
 
 
 def main():
-    """Parenka nustatymus bei migracijų ryšį ir perduoda terminalo argumentus Django komandų vykdyklei."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
-    # Migracijoms, jei pateiktas, naudojamas tiesioginis DB ryšys vietoje ryšių telkinio.
+    # Use the direct database connection for migrations when available.
     if len(sys.argv) > 1 and sys.argv[1] == 'migrate':
         if os.getenv('DATABASE_URL_UNPOOLED'):
             os.environ['DATABASE_URL'] = os.environ['DATABASE_URL_UNPOOLED']

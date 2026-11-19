@@ -1,4 +1,4 @@
-"""Retai atnaujinami Yahoo akcijų rodikliai, atskirti nuo kainų ir techninių indikatorių."""
+"""Yahoo company metrics and their refresh schedule."""
 
 import math
 from datetime import datetime, timedelta, timezone as datetime_timezone
@@ -12,7 +12,7 @@ from .watchlist import active_instruments
 
 
 def read_number(value, positive=False):
-    """Iš Yahoo raw lauko paima baigtinį skaičių; augimui leidžia nulį ir neigiamas reikšmes."""
+    """Read a finite Yahoo number, optionally requiring a positive value."""
     if isinstance(value, dict):
         value = value.get("raw")
     if value is None or isinstance(value, bool):
@@ -27,9 +27,8 @@ def read_number(value, positive=False):
 
 
 def get_stock_fundamentals(symbol):
-    """Su laikina Yahoo sesija gauna P/E bei ketvirčio YoY augimą; nesėkmės atveju grąžina None."""
-    # Yahoo šiam maršrutui reikalauja slapuko ir su juo susieto laikino crumb rakto.
-    # Abu gyvena tik serverio užklausoje; tai nėra vartotojo prisijungimas ar mokamas API raktas.
+    """Fetch P/E and growth metrics, or return None on failure."""
+    # Yahoo requires a session cookie and a matching temporary crumb token.
     try:
         with requests.Session() as session:
             session.headers.update({"User-Agent": "Mozilla/5.0"})
@@ -59,7 +58,6 @@ def get_stock_fundamentals(symbol):
             period = read_number(statistics.get("mostRecentQuarter"), positive=True)
             if period is not None:
                 result["period_end"] = datetime.fromtimestamp(period, datetime_timezone.utc).date()
-            # Nepilnas atsakymas nėra pagrindas senus duomenis perrašyti vien tuščiomis reikšmėmis.
             if not any(result[field] is not None for field in (
                 "trailing_pe", "forward_pe", "revenue_growth", "earnings_growth"
             )):
@@ -70,7 +68,7 @@ def get_stock_fundamentals(symbol):
 
 
 def refresh_stock_fundamentals(force=False):
-    """Atnaujina tik Yahoo akcijas: sėkmę tikrina po paros, nesėkmę pakartoja po valandos."""
+    """Refresh daily after success; retry failures after one hour."""
     updated = 0
     failed = 0
     for instrument in active_instruments().filter(instrument_type="Stock", data_source="YahooFinance"):
@@ -89,6 +87,5 @@ def refresh_stock_fundamentals(force=False):
             updated += 1
         else:
             failed += 1
-        # Nepavykus gavimui atnaujinama tik patikros būsena; senos rodiklių reikšmės lieka.
         saved.save()
     return {"updated": updated, "failed": failed}

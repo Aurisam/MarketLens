@@ -1,5 +1,3 @@
-"""WSGI serverio įėjimo taškas; Render aplinkoje šį application objektą paleidžia Gunicorn."""
-
 import os
 
 from django.core.wsgi import get_wsgi_application

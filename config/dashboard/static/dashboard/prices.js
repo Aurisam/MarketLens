@@ -1,5 +1,4 @@
-// Modulis keičia kortelių kainas ir perduoda tikras biržų OHLC žvakes grafikų moduliui.
-// Atskira funkcijos sritis neleidžia kainų kintamiesiems susimaišyti su charts.js kintamaisiais.
+// Live quotes and exchange candles for the dashboard.
 (() => {
     const latestQuotes = {};
     const yahooErrors = {};
@@ -11,18 +10,15 @@
     let priceRequest = null;
     let pageActive = true;
 
-    // Grąžina šiuo metu puslapyje esančias korteles, taip pat po jų HTML pakeitimo.
     function getCards(source) {
         return Array.from(document.querySelectorAll(".instrument-card[data-source]"))
             .filter(card => !source || card.dataset.source === source);
     }
 
-    // Patikrina, ar šiuo metu verta palaikyti tinklo ryšius.
     function canConnect() {
         return pageActive && !document.hidden && navigator.onLine;
     }
 
-    // Rodo šaltinio vienetą: USDT, Yahoo valiutą ar Hyperliquid USD.
     function formatQuote(quote, source) {
         if (source === "Binance" || source === "YahooFinance") {
             const unit = source === "Binance" ? "USDT" : quote.currency;
@@ -34,7 +30,6 @@
         }).format(quote.price);
     }
 
-    // Pritaiko paskutinę kainą dabartinei kortelei ir parodo tikrą jos gavimo arba šaltinio laiką.
     function renderCard(card) {
         const id = card.dataset.instrumentId;
         const source = card.dataset.source;
@@ -71,7 +66,6 @@
         card.querySelector("[data-price-status]").textContent = status;
     }
 
-    // Atmeta netinkamas ar atgal laike einančias kainas, o pokytį trumpai paryškina spalva.
     function updateQuote(card, quote) {
         if (!Number.isFinite(quote.price) || quote.price <= 0
             || !Number.isFinite(quote.priceTime) || !Number.isFinite(quote.receivedAt)) {
@@ -87,13 +81,11 @@
         if (previous && quote.price !== previous.price) {
             const element = card.querySelector("[data-live-price]");
             element.classList.remove("price-up", "price-down");
-            // Perskaičiavus išdėstymą ta pati animacija gali prasidėti dar kartą.
             void element.offsetWidth;
             element.classList.add(quote.price > previous.price ? "price-up" : "price-down");
         }
     }
 
-    // Perskaito tikėtą konkretaus šaltinio žinutę; kitos žinutės, pavyzdžiui pong, ignoruojamos.
     function readStreamMessage(source, message) {
         const receivedAt = Date.now();
         if (source === "Binance" && message.data?.e === "24hrMiniTicker") {
@@ -106,7 +98,7 @@
                     price: Number(data.c), priceTime: data.E, receivedAt, currency: "USD"
                 }));
         } else if (source === "Hyperliquid" && message.channel === "allMids" && message.data?.mids) {
-            // allMids laiko žymos neturi: laikas ekrane reiškia žinutės gavimą naršyklėje.
+            // allMids has no timestamp; display the browser receipt time.
             getCards(source).forEach(card => updateQuote(card, {
                 price: Number(message.data.mids[card.dataset.symbol]),
                 priceTime: receivedAt, receivedAt, currency: "USD"
@@ -119,7 +111,6 @@
                     .forEach(card => publishCandle(card, candle.i, candle, data.E));
             }
         } else if (source === "Hyperliquid" && message.channel === "candle") {
-            // Hyperliquid gali pateikti vieną žvakę arba pradinį žvakių sąrašą.
             const candles = Array.isArray(message.data) ? message.data : [message.data];
             candles.filter(candle => candle && typeof candle === "object").forEach(candle => {
                 getCards(source).filter(card => card.dataset.symbol === candle.s)
@@ -128,7 +119,6 @@
         }
     }
 
-    // Sulygina laukų pavadinimus ir perduoda žvakę; galutinį OHLC tikrinimą atlieka charts.js.
     function publishCandle(card, interval, candle, updatedAt) {
         document.dispatchEvent(new CustomEvent("marketcandle", {detail: {
             id: card.dataset.instrumentId, source: card.dataset.source, symbol: card.dataset.symbol,
@@ -137,7 +127,7 @@
         }}));
     }
 
-    // Prisijungia prie vieno šaltinio. Nutrūkęs ryšys atkuriamas vis didinant laukimą iki 30 sekundžių.
+    // Connect to a source and restore subscriptions after reconnecting.
     function connectStream(source) {
         const stream = streams[source];
         if (!canConnect() || stream.socket || stream.retryTimer) {
@@ -169,7 +159,7 @@
                 try {
                     readStreamMessage(source, JSON.parse(event.data));
                 } catch (error) {
-                    // Viena neatpažinta žinutė neturi nutraukti likusių kainų atnaujinimo.
+                    // Ignore malformed stream messages.
                 }
             };
             socket.onerror = () => socket.close();
@@ -182,7 +172,6 @@
         }
     }
 
-    // Suplanuoja vieną pakartotinį bandymą; sena kaina lieka matoma su ryšio būsenos tekstu.
     function retryStream(source) {
         const stream = streams[source];
         stream.status = "Disconnected — retrying…";
@@ -197,7 +186,6 @@
         }
     }
 
-    // Uždaro ryšį ir atšaukia bandymus, kai kortelė paslėpta arba pasikeičia instrumentų sąrašas.
     function stopStream(stream) {
         clearTimeout(stream.retryTimer);
         stream.retryTimer = null;
@@ -209,10 +197,8 @@
         stream.status = "Updates paused";
     }
 
-    // Iš dabartinių kortelių sudaro prenumeratas: vienas Binance ir vienas Hyperliquid ryšys.
+    // Share one WebSocket connection per source.
     function syncStreams() {
-        // Naujesnė DB kaina gali pakeisti seną srauto kainą, jei ryšys ilgai neveikė.
-        // Pakeitus instrumento simbolį ar šaltinį ankstesnė kaina taip pat nebenaudojama.
         getCards().forEach(card => {
             const quote = latestQuotes[card.dataset.instrumentId];
             if (quote && (quote.source !== card.dataset.source || quote.symbol !== card.dataset.symbol
@@ -246,7 +232,7 @@
         getCards().forEach(renderCard);
     }
 
-    // Kas 45 sekundes prašo tik Yahoo kainų; API užklausą ir trumpą kešą tvarko Django.
+    // Poll Yahoo quotes through Django every 45 seconds.
     async function refreshStockPrices() {
         if (!canConnect() || pricesInProgress || !getCards("YahooFinance").length) {
             return;
@@ -262,7 +248,6 @@
                 throw new Error("Price request failed");
             }
             const data = await response.json();
-            // Pirma pažymime visus kaip negautus, kad trūkstamas įrašas neatrodytų sėkmingas.
             getCards("YahooFinance").forEach(card => {
                 yahooErrors[card.dataset.instrumentId] = true;
             });
@@ -290,7 +275,6 @@
         }
     }
 
-    // Sumažina tinklo naudojimą paslėpus puslapį, o grįžus atkuria ryšius ir patikrina Yahoo.
     function handleVisibility() {
         if (!canConnect()) {
             Object.values(streams).forEach(stopStream);
@@ -302,7 +286,7 @@
         }
     }
 
-    // Periodinis ping palaiko Hyperliquid ryšį; užstrigę ryšiai uždaromi ir atkuriami.
+    // Keep Hyperliquid alive and reconnect stalled streams.
     setInterval(() => {
         if (!canConnect()) {
             return;

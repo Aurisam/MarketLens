@@ -1,6 +1,4 @@
-{# Šis fragmentas naudojamas ir pradiniam puslapiui, ir /data/ atnaujinimo atsakymui. #}
 <div class="row g-3" id="instrument-cards">
-    {# Kiekvienas instrumentas turi savo kortelę, mygtukus ir unikalius grafikų ID. #}
     {% for instrument in instruments %}
     <div class="col-12" data-instrument-item>
         <div class="card shadow-sm instrument-card" data-instrument-id="{{ instrument.id }}"
@@ -42,7 +40,6 @@
                     </div>
                 </div>
 
-                {# Kompiuteryje analizė užima apie trečdalį kortelės, o grafikai likusią vietą. #}
                 <div class="instrument-layout">
                     <aside class="instrument-sidebar" aria-label="{{ instrument.symbol }} analysis">
                         <section class="analysis-box">
@@ -82,7 +79,6 @@
                         {% if instrument.instrument_type == "Stock" %}
                             {% include "dashboard/fundamentals.html" %}
                         {% endif %}
-                        {# Datos lieka vietinės ir po automatinio kortelių atnaujinimo. #}
                         <p class="instrument-updated text-muted mb-0">
                             {% if instrument.data_updated_at %}
                                 Saved analysis: <time data-local-time="{{ instrument.data_updated_at|date:'c' }}">{{ instrument.data_updated_at|date:'c' }}</time>.
@@ -95,7 +91,6 @@
 
                     <div class="instrument-chart-panel">
 
-                        {# Intervalo keitimas naudoja jau į HTML įdėtus duomenis be papildomos API užklausos. #}
                         <div class="chart-toolbar">
                             <div class="btn-group btn-group-sm" role="group" aria-label="Chart interval">
                                 {% for timeframe in instrument.chart_data %}
@@ -120,11 +115,9 @@
                         <p class="chart-help text-muted">Ctrl + scroll to zoom · Shift + drag to pan · Pinch on touchscreens</p>
 
                         <h6 class="visually-hidden">Price (candlesticks)</h6>
-                        {# Gretimi kainos ir RSI grafikai turi susietą laiko intervalą ir vieną matomą X ašį apačioje. #}
                         <div class="chart-stack">
                             <div class="price-chart-pane">
 
-                                {# Duomenų sąrašai perduodami per data atributus; charts.js juos paverčia skaičiais. #}
                                 <canvas id="price-chart-{{ instrument.id }}"
                                         {% for timeframe, chart in instrument.chart_data.items %}
                                         data-chart-{{ timeframe }}-labels="{{ chart.labels|join:',' }}"
@@ -139,7 +132,6 @@
 
                             </div>
 
-                            {# RSI reikšmės naudoja tas pačias laiko žymas kaip kainos. #}
                             <div class="border-top rsi-chart-pane">
 
                                 <canvas id="rsi-chart-{{ instrument.id }}"
@@ -156,7 +148,6 @@
             </div>
         </div>
     </div>
-    {# Alternatyvus turinys, kai DB dar nėra stebimų instrumentų. #}
     {% empty %}
     <div class="col-12">
         <p>No instruments added yet.</p>

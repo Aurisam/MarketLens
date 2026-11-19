@@ -1,5 +1,3 @@
-"""Dashboard maršrutai: visas puslapis, kortelių HTML ir naujausių Yahoo kainų JSON."""
-
 from django.urls import path
 from . import views
 

@@ -1,10 +1,10 @@
-"""Techninių rodiklių ir signalų skaičiavimas iš jau patikrintų žvakių."""
+"""Technical indicators and rule-based signals."""
 
 TIMEFRAME_WEIGHTS = {"1h": 1, "4h": 2, "1d": 3}
 
 
 def get_simple_trend(candles):
-    """Nustato paprastą kryptį palygindama pirmos ir paskutinės žvakės uždarymo kainas."""
+    """Compare the first and last closing prices."""
     if not candles:
         return "No data"
 
@@ -21,7 +21,7 @@ def get_simple_trend(candles):
 
 
 def calculate_sma(candles, period):
-    """Apskaičiuoja paskutinių period uždarymo kainų vidurkį; trūkstant žvakių grąžina None."""
+    """Return the latest moving average, or None if history is too short."""
     if len(candles) < period:
         return None
 
@@ -34,7 +34,7 @@ def calculate_sma(candles, period):
 
 
 def get_sma_analysis(candles):
-    """Apskaičiuoja SMA20 bei SMA50 ir patikrina, ar paskutinė kaina yra virš jų."""
+    """Compare the latest close with SMA20 and SMA50."""
     if len(candles) < 50:
         return None
 
@@ -52,7 +52,7 @@ def get_sma_analysis(candles):
 
 
 def calculate_rsi_series(candles, period=14):
-    """Grąžina kiekvienos žvakės Wilder RSI; pradžioje palieka None, kol pakanka istorijos."""
+    """Calculate Wilder RSI, leaving None until enough candles are available."""
     values = [None] * len(candles)
     if len(candles) <= period:
         return values
@@ -64,7 +64,6 @@ def calculate_rsi_series(candles, period=14):
         gain = max(change, 0)
         loss = max(-change, 0)
 
-        # Pirmoms 14 permainų naudojamas paprastas vidurkis, vėliau – Wilder glodinimas.
         if index <= period:
             average_gain += gain / period
             average_loss += loss / period
@@ -83,13 +82,12 @@ def calculate_rsi_series(candles, period=14):
 
 
 def calculate_rsi(candles, period=14):
-    """Paskutinę RSI reikšmę paima iš tos pačios sekos, kuri naudojama grafike."""
     values = calculate_rsi_series(candles, period)
     return values[-1] if values else None
 
 
 def get_rsi_analysis(candles):
-    """Grąžina iki dviejų skaitmenų suapvalintą RSI ir jo reikšmės apibūdinimą."""
+    """Return the rounded RSI and its momentum category."""
     rsi = calculate_rsi(candles)
 
     if rsi is None:
@@ -111,11 +109,10 @@ def get_rsi_analysis(candles):
 
 
 def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
-    """Sujungia krypties, SMA ir RSI balus į vieno intervalo signalą bei jo priežastis."""
+    """Combine trend, SMA and RSI scores with their explanations."""
     score = 0
     factors = []
 
-    # Kylanti kryptis prideda vieną balą, krintanti atima; šoninė kryptis balo nekeičia.
     if trend == "Uptrend":
         score += 1
         factors.append("Uptrend: first-to-last close increased (+1)")
@@ -125,7 +122,6 @@ def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
     elif trend == "Sideways":
         factors.append("Sideways: first and last close are equal (0)")
 
-    # Kainos pozicija virš arba žemiau kiekvieno SMA prideda arba atima po vieną balą.
     if sma_analysis:
         if sma_analysis["price_above_sma20"]:
             score += 1
@@ -141,7 +137,6 @@ def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
             score -= 1
             factors.append("Price at or below SMA50 (-1)")
 
-    # Signalo RSI ribos yra 55 ir 45; tai atskira taisyklė nuo 70/30 būsenų aprašymo.
     if rsi_analysis:
         rsi = rsi_analysis["rsi"]
 
@@ -154,7 +149,7 @@ def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
         else:
             factors.append("RSI between 45 and 55 (0)")
 
-    # Signalui reikia bent dviejų indikatorių grupių; SMA20 ir SMA50 čia laikomi viena grupe.
+    # SMA20 and SMA50 count as one indicator group.
     indicators_available = sum([
         trend in ["Uptrend", "Downtrend", "Sideways"],
         bool(sma_analysis),
@@ -185,8 +180,7 @@ def get_timeframe_signal(trend, sma_analysis, rsi_analysis):
 
 
 def get_overall_signal(timeframe_signals):
-    """Apskaičiuoja bendrą signalą, ilgesnių intervalų balams suteikdama didesnį svorį."""
-    # Dieninis signalas turi svorį 3, keturių valandų 2, valandinis 1.
+    """Combine interval scores using larger weights for longer intervals."""
     weighted_score = 0
     total_weight = 0
     timeframes_used = 0
@@ -227,7 +221,7 @@ def get_overall_signal(timeframe_signals):
 
 
 def get_signal_consensus(timeframe_signals):
-    """Suskaičiuoja galiojančius intervalų signalus ir apibūdina jų tarpusavio sutapimą."""
+    """Describe agreement between valid interval signals."""
     valid_signals = [
         data["signal"]
         for data in timeframe_signals.values()
@@ -264,7 +258,7 @@ def get_signal_consensus(timeframe_signals):
 
 
 def get_chart_data(candles):
-    """Paruošia vienodo ilgio kainų, laiko, SMA ir RSI sąrašus grafikams."""
+    """Build aligned price, time, SMA and RSI series."""
     if not candles:
         return {
             "labels": [],
@@ -283,8 +277,6 @@ def get_chart_data(candles):
     sma20 = []
     sma50 = []
 
-    # Kiekvieno taško SMA skaičiuojamas tik iš tuo metu jau buvusių kainų.
-    # Kol nesukaupta 20 ar 50 žvakių, None palieka tarpą grafiko linijoje.
     for i in range(len(closes)):
         if i >= 19:
             sma20.append(sum(closes[i - 19:i + 1]) / 20)

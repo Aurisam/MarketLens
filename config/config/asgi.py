@@ -1,5 +1,3 @@
-"""ASGI serverio įėjimo taškas: parenka Django nustatymus ir sukuria application objektą."""
-
 import os
 
 from django.core.asgi import get_asgi_application

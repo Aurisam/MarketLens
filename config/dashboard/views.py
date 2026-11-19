@@ -1,5 +1,3 @@
-"""Puslapiai skaito istoriją iš DB; atskiras kainų maršrutas tikrina naujausias Yahoo kainas."""
-
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
@@ -33,7 +31,7 @@ from .indicators import (
 
 
 def get_dashboard_instruments(request=None):
-    """Prideda instrumentams grafikų duomenis, indikatorius ir paaiškinamus signalus."""
+    """Prepare saved prices, charts and analysis for each visible instrument."""
     instruments = visible_instruments(request).select_related("fundamentals")
 
     for instrument in instruments:
@@ -44,14 +42,12 @@ def get_dashboard_instruments(request=None):
         instrument.analysis_rows = []
         signals = {}
 
-        # Kiekvienam intervalui paruošiama atskira kainų ir indikatorių seka.
         for timeframe in TIMEFRAMES:
             candles = list(
                 instrument.candles.filter(interval=timeframe)
                 .order_by("-open_time")
                 .values("open_time", "open", "high", "low", "close")[:100]
             )
-            # DB paimame 100 naujausių, o skaičiavimams apverčiame į seniausios–naujausios tvarką.
             candles.reverse()
             instrument.chart_data[timeframe] = get_chart_data(candles)
             trend = get_simple_trend(candles)
@@ -82,12 +78,11 @@ def get_dashboard_instruments(request=None):
 @never_cache
 @require_GET
 def home(request):
-    """Grąžina visą pradinį puslapį su visų instrumentų kortelėmis."""
     return render_home(request)
 
 
 def render_home(request, form=None, status=200):
-    """Paruošia puslapį tiek pirmai užklausai, tiek pridėjimo formos klaidoms."""
+    """Render the dashboard, including any form errors."""
     return render(request, "dashboard/home.html", {
         "instruments": get_dashboard_instruments(request),
         "add_instrument_form": form if form is not None else AddInstrumentForm(),
@@ -97,7 +92,7 @@ def render_home(request, form=None, status=200):
 
 @require_POST
 def add_instrument(request):
-    """Patikrina simbolį ir prideda jį tik į šios naršyklės pasirašytą sąrašą."""
+    """Validate a symbol and add it to this browser's signed list."""
     form = AddInstrumentForm(request.POST)
     if not form.is_valid():
         return render_home(request, form, status=400)
@@ -129,7 +124,7 @@ def add_instrument(request):
 
 @require_POST
 def remove_instrument(request, instrument_id):
-    """Pašalina tik ID iš šios naršyklės sąrašo; kitų lankytojų pasirinkimų ir bendros istorijos nekeičia."""
+    """Remove a personal selection without deleting shared market data."""
     ids = get_personal_ids(request)
     if instrument_id in ids:
         ids.remove(instrument_id)
@@ -142,19 +137,17 @@ def remove_instrument(request, instrument_id):
 @never_cache
 @require_GET
 def dashboard_data(request):
-    """Grąžina tik kortelių HTML, kurį naršyklė naudoja automatiniam atnaujinimui."""
+    """Return the card HTML used by automatic refreshes."""
     return render(request, "dashboard/cards.html", {"instruments": get_dashboard_instruments(request)})
 
 
 @never_cache
 @require_GET
 def stock_prices(request):
-    """Grąžina tik išsaugotų Yahoo instrumentų kainas; istorinių grafikų ir DB nekeičia."""
+    """Return current Yahoo quotes without changing saved history."""
     instruments = list(visible_instruments(request).filter(data_source="YahooFinance"))
-    # Iki keturių nepriklausomų HTTP užklausų vienu metu neleidžia ilgesniam sąrašui laukti po 5 s už kiekvieną akciją.
-    # DB skaitoma pagrindiniame sraute; pagalbiniai srautai gauna tik simbolius ir grąžina API duomenis.
+    # Keep database access on the main thread; workers only fetch quotes.
     with ThreadPoolExecutor(max_workers=4) as pool:
         values = list(pool.map(get_stock_quote, [instrument.symbol for instrument in instruments]))
     quotes = [{"id": instrument.id, "quote": value} for instrument, value in zip(instruments, values)]
-    # None reiškia užklausos nesėkmę; naršyklė tokiu atveju palieka ankstesnę kainą.
     return JsonResponse({"quotes": quotes})

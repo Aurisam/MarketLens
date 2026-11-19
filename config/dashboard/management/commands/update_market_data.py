@@ -1,5 +1,3 @@
-"""Komanda python manage.py update_market_data atnaujina API duomenis bendroje duomenų bazėje."""
-
 import math
 
 from django.core.management.base import BaseCommand, CommandError
@@ -13,14 +11,12 @@ from dashboard.services import TIMEFRAMES, get_instrument_candles, get_instrumen
 
 
 class Command(BaseCommand):
-    """Django komanda periodiniam visų išsaugotų instrumentų atnaujinimui."""
     help = "Fetch market data and save it to the database. Safe to run repeatedly."
 
     def handle(self, *args, **options):
-        """Įrašo naujas žvakes ir kainas; dalinės API nesėkmės atveju išsaugo turimus duomenis."""
+        """Refresh market data while retaining saved values when a source fails."""
         failures = 0
         for instrument_id in active_instruments().values_list("id", flat=True):
-            # Transakcija ir eilutės užraktas neleidžia dviem PostgreSQL užduotims kartu keisti to paties instrumento.
             with transaction.atomic():
                 instrument = Instrument.objects.select_for_update().get(pk=instrument_id)
                 complete = True
@@ -42,18 +38,16 @@ class Command(BaseCommand):
                     complete = False
                     self.stderr.write(f"{instrument.symbol}: no price; keeping saved price.")
 
-                # Pilno atnaujinimo laikas keičiamas tik gavus visus intervalus ir tinkamą kainą.
                 if complete:
                     instrument.data_updated_at = timezone.now()
                 else:
                     failures += 1
                 instrument.save(update_fields=["last_price", "price_updated_at", "data_updated_at"])
 
-        # Tas pats tvarkaraštis paleidžia ir fundamentinius duomenis, bet jų helperis tikrina paros ribą.
         fundamentals = refresh_stock_fundamentals()
         if fundamentals["failed"]:
             self.stderr.write("Some stock fundamentals are unavailable; previous values were kept.")
 
-        # Klaida pranešama jau išsaugojus sėkmingus rezultatus; GitHub Actions matys nesėkmingą vykdymą.
+        # Report partial failure only after saving the successful updates.
         if failures:
             raise CommandError(f"{failures} instruments were only partially updated. Saved data was kept.")

@@ -1,12 +1,6 @@
-# Žiniatinklio karkasas: modeliai, maršrutai, šablonai ir valdymo komandos.
 Django>=6.0,<6.2
-# HTTP užklausos į Binance, Hyperliquid ir Yahoo Finance API.
 requests>=2.32,<3
-# Produkcijos WSGI serveris Render aplinkoje.
 gunicorn>=23,<27
-# Statinių failų aptarnavimas ir suspaudimas be atskiro failų serverio.
 whitenoise>=6.9,<7
-# DATABASE_URL reikšmės pavertimas Django duomenų bazės nustatymais.
 dj-database-url>=2.3,<4
-# Python tvarkyklė ryšiui su PostgreSQL duomenų baze.
 psycopg[binary]>=3.2,<4

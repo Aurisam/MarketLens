@@ -1,4 +1,4 @@
-"""Rinkos duomenų gavimas iš API ir žvakių pavertimas bendru formatu."""
+"""Market API requests and candle validation."""
 
 import math
 import time
@@ -7,7 +7,6 @@ from urllib.parse import quote
 import requests
 from django.core.cache import cache
 
-# Viešas Binance rinkos duomenų adresas leidžia gauti kainas ir žvakes be API rakto.
 BINANCE_API_URL = "https://data-api.binance.vision/api/v3"
 HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz/info"
 API_TIMEOUT_SECONDS = 10
@@ -15,7 +14,7 @@ TIMEFRAMES = ("1h", "4h", "1d")
 
 
 def get_instrument_details(symbol, source):
-    """Patikrina tikrą platformos simbolį; Yahoo akcijos ir ETF tipą nustato iš atsakymo."""
+    """Verify the symbol and determine its asset type."""
     cache_key = f"instrument-details:{source}:{symbol}"
     cached = cache.get(cache_key)
     if cached is not None:
@@ -53,8 +52,7 @@ def get_instrument_details(symbol, source):
 
 
 def get_stock_quote(symbol):
-    """Gauna naujausią Yahoo kainą ir jos laiką; trumpas kešas sumažina pakartotines užklausas."""
-    # Kainoms naudojamas atskiras kešas nuo istorinių žvakių, kurios saugomos penkias minutes.
+    """Fetch a cached Yahoo quote, or return None on failure."""
     cache_key = f"stock-quote:{symbol}"
     cached = cache.get(cache_key)
     if cached is not None:
@@ -80,11 +78,10 @@ def get_stock_quote(symbol):
             "price": price,
             "price_time": price_time,
             "checked_at": checked_at,
-            # Išlaikome šaltinio vienetą, pvz., GBp reiškia pensus, o GBP – svarus.
+            # Preserve units: GBp means pence, while GBP means pounds.
             "currency": currency,
         }
     except (requests.RequestException, ValueError, KeyError, IndexError, TypeError, OverflowError):
-        # Trumpam įsimenama ir nesėkmė, kad Yahoo sutrikimas nesukeltų užklausų lavinos.
         cache.set(cache_key, False, timeout=15)
         return None
 
@@ -93,7 +90,7 @@ def get_stock_quote(symbol):
 
 
 def get_crypto_price(symbol):
-    """Grąžina Binance kriptovaliutos kainą USDT; nepavykus užklausai grąžina None."""
+    """Fetch the Binance price in USDT, or return None."""
     url = f"{BINANCE_API_URL}/ticker/price"
     params = {"symbol": f"{symbol}USDT"}
 
@@ -115,7 +112,7 @@ def get_crypto_price(symbol):
 
 
 def get_hyperliquid_price(symbol):
-    """Grąžina Hyperliquid vidurinę kainą; jos negavus grąžina None."""
+    """Fetch the Hyperliquid mid-price, or return None."""
     payload = {"type": "allMids", "dex": ""}
 
     try:
@@ -141,13 +138,12 @@ def get_hyperliquid_price(symbol):
 
 
 def group_four_hour_candles(hourly_candles):
-    """Sujungia valandines žvakes į iki keturių valandų grupes toje pačioje prekybos sesijoje."""
+    """Group hourly candles within the same trading session."""
     grouped = []
     hour = 60 * 60 * 1000
     previous_time = None
     for candle in hourly_candles:
         opened = candle["open_time"]
-        # Ilgesnė nei valandos pertrauka pradeda naują sesiją, todėl skirtingų dienų žvakės nejungiamos.
         if not grouped or opened - previous_time > hour or opened - grouped[-1]["open_time"] >= 4 * hour:
             grouped.append(candle.copy())
         else:
@@ -160,16 +156,14 @@ def group_four_hour_candles(hourly_candles):
 
 
 def get_stock_candles(symbol, interval, timeout=API_TIMEOUT_SECONDS):
-    """Gauna akcijos ar ETF žvakes iš Yahoo Finance; 4h žvakes sudaro iš 1h duomenų."""
+    """Fetch Yahoo history and build 4h candles from hourly data."""
     if interval == "4h":
         return group_four_hour_candles(get_stock_candles(symbol, "1h", timeout=timeout))
 
-    # Valandinėms ir dieninėms žvakėms prašome skirtingo ilgio istorijos.
     ranges = {"1h": "3mo", "1d": "6mo"}
     if interval not in ranges:
         return []
 
-    # Trumpas serverio cache leidžia panaudoti tą patį Yahoo atsakymą 1h, 4h ir kainos gavimui.
     cache_key = f"stock-candles:{symbol}:{interval}"
     candles = cache.get(cache_key)
     if candles is not None:
@@ -186,7 +180,6 @@ def get_stock_candles(symbol, interval, timeout=API_TIMEOUT_SECONDS):
         result = response.json()["chart"]["result"][0]
         prices = result["indicators"]["quote"][0]
         candles = []
-        # Yahoo laiką pateikia sekundėmis, o šiame projekte visur naudojamos milisekundės.
         for index, timestamp in enumerate(result["timestamp"]):
             try:
                 candles.append({
@@ -197,19 +190,16 @@ def get_stock_candles(symbol, interval, timeout=API_TIMEOUT_SECONDS):
                     "close": prices["close"][index],
                 })
             except (KeyError, IndexError, TypeError, ValueError, OverflowError):
-                # Viena nepilna žvakė nepanaikina likusios gautos istorijos.
                 continue
         candles = validate_candles(candles)
     except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
         candles = []
 
-    # Sėkmingi duomenys laikomi 5 minutes, nesėkmė tik 30 sekundžių, kad greičiau būtų bandoma dar kartą.
     cache.set(cache_key, candles, timeout=300 if candles else 30)
     return candles
 
 
 def get_instrument_price(instrument):
-    """Pagal instrumento duomenų šaltinį parenka kainos gavimo funkciją."""
     if instrument.data_source == "Hyperliquid":
         return get_hyperliquid_price(instrument.symbol)
 
@@ -225,7 +215,7 @@ def get_instrument_price(instrument):
 
 
 def get_binance_candles(symbol, interval="1h", limit=100, timeout=API_TIMEOUT_SECONDS):
-    """Gauna neapdorotas Binance žvakes; API klaidos atveju grąžina tuščią sąrašą."""
+    """Fetch raw Binance candles, or return an empty list."""
     url = f"{BINANCE_API_URL}/klines"
     params = {
         "symbol": f"{symbol}USDT",
@@ -254,8 +244,7 @@ def get_binance_candles(symbol, interval="1h", limit=100, timeout=API_TIMEOUT_SE
 
 
 def get_hyperliquid_candles(symbol, interval="1h", limit=100, timeout=API_TIMEOUT_SECONDS):
-    """Gauna Hyperliquid žvakes ir palieka ne daugiau kaip limit naujausių įrašų."""
-    # Hyperliquid laukia Unix laiko milisekundėmis, todėl sekundes dauginame iš 1000.
+    """Fetch at most the requested number of Hyperliquid candles."""
     end_time_ms = int(time.time() * 1000)
     interval_ms = {"1h": 3600000, "4h": 14400000, "1d": 86400000}.get(interval)
     if interval_ms is None or limit <= 0:
@@ -266,7 +255,6 @@ def get_hyperliquid_candles(symbol, interval="1h", limit=100, timeout=API_TIMEOU
         "req": {
             "coin": symbol,
             "interval": interval,
-            # Prašome tik reikalingo laikotarpio, o ne visos prieinamos istorijos nuo 1970 m.
             "startTime": max(0, end_time_ms - limit * interval_ms),
             "endTime": end_time_ms,
         },
@@ -293,7 +281,7 @@ def get_hyperliquid_candles(symbol, interval="1h", limit=100, timeout=API_TIMEOU
 
 
 def get_formatted_hyperliquid_candles(symbol, interval="1h", limit=100, timeout=API_TIMEOUT_SECONDS):
-    """Hyperliquid laukus paverčia bendru open_time, open, high, low ir close formatu."""
+    """Convert Hyperliquid fields to the common candle format."""
     candles = get_hyperliquid_candles(symbol, interval=interval, limit=limit, timeout=timeout)
 
     formatted_candles = []
@@ -314,7 +302,7 @@ def get_formatted_hyperliquid_candles(symbol, interval="1h", limit=100, timeout=
 
 
 def get_formatted_binance_candles(symbol, interval="1h", limit=100, timeout=API_TIMEOUT_SECONDS):
-    """Binance sąrašo pozicijas paverčia tais pačiais įvardytais žvakės laukais."""
+    """Convert Binance positions to named candle fields."""
     candles = get_binance_candles(symbol, interval=interval, limit=limit, timeout=timeout)
 
     formatted_candles = []
@@ -335,7 +323,7 @@ def get_formatted_binance_candles(symbol, interval="1h", limit=100, timeout=API_
 
 
 def get_instrument_candles(instrument, interval="1h", limit=100, timeout=API_TIMEOUT_SECONDS):
-    """Parenka API pagal šaltinį ir grąžina vienodo formato patikrintas žvakes."""
+    """Select the source and return validated candles."""
     if interval not in TIMEFRAMES or limit <= 0:
         return []
     if instrument.data_source == "YahooFinance":
@@ -361,7 +349,7 @@ def get_instrument_candles(instrument, interval="1h", limit=100, timeout=API_TIM
 
 
 def validate_candles(candles):
-    """Atmeta nepilnas ar nelogiškas žvakes ir likusias surikiuoja nuo seniausios."""
+    """Reject invalid candles, remove duplicates and sort by opening time."""
     if not isinstance(candles, list):
         return []
 
@@ -388,14 +376,12 @@ def validate_candles(candles):
             close_price,
         ]
 
-        # NaN, begalybė ir neigiamos ar nulinės kainos grafikams bei skaičiavimams netinka.
         if not all(math.isfinite(price) for price in prices):
             continue
 
         if min(prices) <= 0:
             continue
 
-        # Open ir close turi patekti tarp low ir high; laikas negali būti neigiamas.
         if low_price > min(open_price, close_price):
             continue
 
@@ -408,7 +394,6 @@ def validate_candles(candles):
         if open_time < 0:
             continue
 
-        # Pasikartojus laikui paliekamas paskutinis įrašas; DB negaus dviejų vienodų raktų.
         valid_candles[open_time] = {
             "open_time": open_time,
             "open": open_price,

@@ -1,4 +1,3 @@
-/* Ribojame bendrą plotį, kad dideliame monitoriuje grafikai pernelyg neišsitemptų. */
 .marketlens-container {
     max-width: 1200px;
 }
@@ -30,7 +29,6 @@
     font-size: 0.75rem;
 }
 
-/* Kairė skiltis skirta informacijai, dešinė – žvakėms ir bendrai RSI laiko ašiai. */
 .instrument-layout {
     display: grid;
     grid-template-columns: minmax(260px, 31%) minmax(0, 1fr);
@@ -60,7 +58,6 @@
     margin-bottom: 0.5rem;
 }
 
-/* Bootstrap spalvų kintamieji leidžia toms pačioms lentelėms veikti abiejose temose. */
 .analysis-box .table {
     --bs-table-bg: transparent;
     font-size: 0.8rem;
@@ -149,7 +146,7 @@
     margin-bottom: 0.4rem;
 }
 
-/* Canvas turi atskirus fiksuoto aukščio tėvus, kad Chart.js nedidintų visos kortelės. */
+/* Fixed parent heights prevent Chart.js from expanding the cards. */
 .price-chart-pane {
     position: relative;
     height: 200px;
@@ -160,7 +157,6 @@
     height: 120px;
 }
 
-/* Telefone ir siauresnėje planšetėje analizė rodoma virš grafiko. */
 @media (max-width: 991.98px) {
     .instrument-layout {
         grid-template-columns: minmax(0, 1fr);
@@ -174,14 +170,12 @@
     }
 }
 
-/* Temos mygtukai ir trumpas kainų pokyčio paryškinimas. */
 [data-bs-theme="dark"] .btn-outline-secondary {
     --bs-btn-color: #dee2e6;
     --bs-btn-hover-color: #fff;
     --bs-btn-hover-bg: #495057;
     --bs-btn-hover-border-color: #adb5bd;
 }
-/* Krypties spalva trumpam parodo naujausią kainos pokytį. */
 .price-up { animation: price-up 1.2s ease-out; }
 .price-down { animation: price-down 1.2s ease-out; }
 @keyframes price-up { from { color: #198754; } to { color: inherit; } }

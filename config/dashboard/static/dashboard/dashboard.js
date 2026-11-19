@@ -1,4 +1,4 @@
-// Paieška ir mėgstami instrumentai veikia tik naršyklėje; paskyros ir papildomos DB nereikia.
+// Browser-only search, filters and favorites.
 (() => {
     const search = document.getElementById("instrument-search");
     const type = document.getElementById("instrument-type");
@@ -6,7 +6,6 @@
     const openPanels = {};
     let favorites = readFavorites();
 
-    // Perskaito tik galiojantį ID sąrašą; sugadintas ar uždraustas localStorage nesustabdo puslapio.
     function readFavorites() {
         try {
             const saved = JSON.parse(localStorage.getItem("marketlens-favorites") || "[]");
@@ -16,7 +15,6 @@
         }
     }
 
-    // Pritaiko visus tris filtrus kartu ir atnaujina rezultatų skaičių bei žvaigždutes.
     function applyFilters() {
         const query = search.value.trim().toLocaleLowerCase();
         const cards = document.querySelectorAll(".instrument-card");
@@ -39,11 +37,9 @@
         });
         document.getElementById("filter-status").textContent = `Showing ${visible} of ${cards.length} instruments`;
         document.getElementById("no-filter-results").hidden = visible > 0 || cards.length === 0;
-        // Vėl parodytas canvas turi perskaičiuoti plotį, jei buvo sukurtas paslėptoje kortelėje.
         document.dispatchEvent(new Event("dashboardfilterchange"));
     }
 
-    // Vienas bendras click listeneris tinka ir naujai iš serverio gautoms kortelėms.
     document.addEventListener("click", event => {
         const button = event.target.closest("[data-favorite-id]");
         if (!button) {
@@ -58,7 +54,7 @@
         try {
             localStorage.setItem("marketlens-favorites", JSON.stringify([...favorites]));
         } catch (error) {
-            // Pasirinkimas veikia šiame puslapyje net jei naršyklė neleidžia jo išsaugoti.
+            // Keep favorites usable when storage is blocked.
         }
         applyFilters();
     });

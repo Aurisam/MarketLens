@@ -1,10 +1,8 @@
-// Naršyklės grafikų būsena saugoma pagal instrumento ID, kad kortelės veiktų nepriklausomai.
+// Charts, live candles and periodic dashboard refreshes.
 const chartInstances = {};
 const selectedTimeframes = {};
-// Gyvos žvakės saugomos atskirai, kad jų neprarastume gavę senesnį DB HTML fragmentą.
 const liveCandleData = {};
 const pendingLiveRenders = {};
-// Laiko juosta paimama iš vartotojo naršyklės, todėl konkreti šalis kode nenustatoma.
 const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
     year: "numeric",
@@ -20,15 +18,13 @@ const priceFormatter = new Intl.NumberFormat(undefined, {
     maximumFractionDigits: 3
 });
 let refreshInProgress = false;
-// Apsauga nuo ciklo: susiejus grafikus, vieno pakeitimas neturi be galo keisti kito.
 let syncingCharts = false;
 
-// Formatuoja kainą pagal naršyklės lokalę, visada palikdama 3 skaitmenis po kablelio.
 function formatPrice(value) {
     return Number.isFinite(value) ? priceFormatter.format(value) : "—";
 }
 
-// Perkelia vieno instrumento matomą laiko intervalą iš kainos grafiko į RSI arba atvirkščiai.
+// Keep the price and RSI time ranges synchronized.
 function syncChartRange(id, sourceName) {
     const charts = chartInstances[id];
     if (!charts || syncingCharts) {
@@ -45,13 +41,12 @@ function syncChartRange(id, sourceName) {
     }
 }
 
-// Ašies žymei grąžina dvi eilutes: vietinę datą ir vietinį laiką.
 function formatAxisTime(timestamp) {
     const date = new Date(timestamp);
     return [axisDateFormatter.format(date), axisTimeFormatter.format(date)];
 }
 
-// Sukuria bendrus laiko ašies nustatymus; užrašai įjungiami tik apatiniame RSI grafike.
+// Share candle timestamps; show time labels only below the RSI chart.
 function getTimeScale(times, showLabels) {
     return {
         type: "timeseries",
@@ -62,7 +57,6 @@ function getTimeScale(times, showLabels) {
         border: {display: showLabels},
         grid: {drawTicks: showLabels},
         afterBuildTicks(scale) {
-            // Abiejų grafikų vertikalios linijos remiasi tomis pačiomis žvakių laiko žymomis.
             const visibleTimes = times.filter(time => time >= scale.min && time <= scale.max);
             const tickCount = Math.max(2, Math.min(6, Math.floor(scale.maxWidth / 90)));
             const step = Math.max(1, Math.ceil(visibleTimes.length / tickCount));
@@ -81,13 +75,11 @@ function getTimeScale(times, showLabels) {
     };
 }
 
-// Suvienodina Y ašių plotį, kad kainos ir RSI tinklelio linijos sutaptų.
+// Match axis widths so the price and RSI plots align.
 function setAxisWidth(scale) {
-    // Vienodas plotis abiem grafikams palieka tą pačią horizontalią braižymo sritį.
     scale.width = 84;
 }
 
-// Nustato priartinimo ir slinkimo valdymą bei susieja abiejų grafikų laiko intervalus.
 function getZoomOptions(minRange, id, chartName) {
     return {
         limits: {x: {min: "original", max: "original", minRange}},
@@ -106,24 +98,20 @@ function getZoomOptions(minRange, id, chartName) {
     };
 }
 
-// Priartina kainos grafiką; jo onZoom automatiškai atnaujina ir RSI vaizdą.
 function zoomCharts(id, factor) {
     chartInstances[id].price.zoom({x: factor}, "none");
 }
 
-// Grąžina abu instrumento grafikus į pradinį laiko intervalą.
 function resetChartZoom(id) {
     const charts = chartInstances[id];
     [charts.price, charts.rsi].forEach(chart => {
         chart.resetZoom("none");
-        // Gyvas srautas galėjo pridėti naują žvakę po pradinio grafiko sukūrimo.
         chart.options.scales.x.min = charts.times[0];
         chart.options.scales.x.max = charts.times.at(-1);
         chart.update("none");
     });
 }
 
-// Išsaugo pakeistą matomą intervalą; nepakeistam grafikui grąžina null.
 function getChartRange(chart) {
     if (!chart.isZoomedOrPanned()) {
         return null;
@@ -131,7 +119,6 @@ function getChartRange(chart) {
     return {min: chart.scales.x.min, max: chart.scales.x.max};
 }
 
-// Priderina grafiko tekstą, tinklelį ir užuominas prie pasirinktos šviesios arba tamsios temos.
 function applyChartTheme(chart) {
     const isDark = document.documentElement.dataset.bsTheme === "dark";
     const textColor = isDark ? "#dee2e6" : "#495057";
@@ -150,12 +137,10 @@ function applyChartTheme(chart) {
     chart.update("none");
 }
 
-// Formatuoja laiko žymą naršyklės nustatyta laiko juosta ir lokalės formatu.
 function formatLocalTime(timestamp) {
     return dateFormatter.format(new Date(timestamp));
 }
 
-// Paverčia kableliais atskirtas HTML reikšmes skaičiais; trūkstamas reikšmes paverčia null.
 function readNumbers(value) {
     if (!value) {
         return [];
@@ -168,12 +153,10 @@ function readNumbers(value) {
     });
 }
 
-// Iš canvas data atributų paima nurodyto intervalo ir lauko skaičių sąrašą.
 function getChartValues(canvas, timeframe, field) {
     return readNumbers(canvas.getAttribute(`data-chart-${timeframe}-${field}`));
 }
 
-// Kiekvienai žvakei suskaičiuoja paskutinių period kainų vidurkį.
 function calculateMovingAverages(closes, period) {
     const averages = [];
     for (let index = 0; index < closes.length; index += 1) {
@@ -190,7 +173,7 @@ function calculateMovingAverages(closes, period) {
     return averages;
 }
 
-// Skaičiuoja SMA ir Wilder RSI kiekvienam taškui, kai žvakė keičiasi tiesioginiame sraute.
+// Calculate SMA and Wilder RSI for live candles.
 function calculateChartIndicators(candles) {
     const closes = candles.map(candle => candle.c);
     const sma20 = calculateMovingAverages(closes, 20);
@@ -221,7 +204,7 @@ function calculateChartIndicators(candles) {
     return {sma20, sma50, rsi};
 }
 
-// Sujungia DB istoriją ir biržos OHLC žvakes pagal pradžios laiką, išlaikydama paskutines 100.
+// Merge saved and live candles by opening time, keeping the latest 100.
 function getMergedCandles(id, timeframe, canvas) {
     const times = getChartValues(canvas, timeframe, "labels");
     const opens = getChartValues(canvas, timeframe, "opens");
@@ -243,7 +226,7 @@ function getMergedCandles(id, timeframe, canvas) {
     return [...candles.values()].sort((first, second) => first.x - second.x).slice(-100);
 }
 
-// Pakeičia aktyvaus grafiko duomenis jo neperkurdama ir išlaiko vartotojo pasirinktą priartinimą.
+// Update live data without recreating charts or losing zoom.
 function updateLiveChart(id) {
     const charts = chartInstances[id];
     const canvas = document.getElementById(`price-chart-${id}`);
@@ -259,7 +242,7 @@ function updateLiveChart(id) {
     }
     const indicators = calculateChartIndicators(candles);
     const zoomed = charts.price.isZoomedOrPanned() || charts.rsi.isZoomedOrPanned();
-    // Ašies callback naudoja tą patį times masyvą, todėl keičiame jo turinį, o ne nuorodą.
+    // Mutate the array in place: axis callbacks retain this reference.
     charts.times.splice(0, charts.times.length, ...candles.map(candle => candle.x));
     charts.price.data.datasets[0].data = candles;
     charts.price.data.datasets[1].data = charts.times.map((time, index) => ({x: time, y: indicators.sma20[index]}));
@@ -278,7 +261,7 @@ function updateLiveChart(id) {
     });
 }
 
-// Priima tik tikrą biržos OHLC žvakę; vien iš naujos kainos open/high/low neišgalvojami.
+// Validate exchange OHLC data before updating the live cache.
 function receiveLiveCandle(detail) {
     const {id, source, symbol, interval, candle, updatedAt} = detail;
     const canvas = document.getElementById(`price-chart-${id}`);
@@ -306,7 +289,6 @@ function receiveLiveCandle(detail) {
     }
     timeframes[interval] = [...saved.filter(item => item.candle.x !== candle.x), {candle, updatedAt}]
         .sort((first, second) => first.candle.x - second.candle.x).slice(-100);
-    // Kelių intervalų žinutės gali ateiti kartu; aktyvus grafikas atnaujinamas vieną kartą per 250 ms.
     if (!pendingLiveRenders[id]) {
         pendingLiveRenders[id] = setTimeout(() => {
             delete pendingLiveRenders[id];
@@ -315,7 +297,7 @@ function receiveLiveCandle(detail) {
     }
 }
 
-// Sukuria instrumento žvakių bei RSI grafikus ir, jei reikia, atkuria ankstesnį priartinimą.
+// Create the price and RSI charts and restore the saved view.
 function createCharts(id, timeframe = "1h", savedView = null) {
     const priceCanvas = document.getElementById(`price-chart-${id}`);
     const rsiCanvas = document.getElementById(`rsi-chart-${id}`);
@@ -337,10 +319,8 @@ function createCharts(id, timeframe = "1h", savedView = null) {
     }
     const {sma20, sma50, rsi} = indicators;
 
-    // Neleidžiame priartinti labiau nei maždaug iki dviejų intervalų pločio.
     const minRange = times.length > 1 ? (times[1] - times[0]) * 2 : 1;
 
-    // Prieš panaudodami tuos pačius canvas elementus sunaikiname ankstesnius Chart objektus.
     if (chartInstances[id]) {
         chartInstances[id].price.destroy();
         chartInstances[id].rsi.destroy();
@@ -348,7 +328,6 @@ function createCharts(id, timeframe = "1h", savedView = null) {
 
     chartInstances[id] = {
         times, timeframe,
-        // Viršutinis grafikas: OHLC žvakės su SMA20 ir SMA50 linijomis.
         price: new Chart(priceCanvas, {
             type: "candlestick",
             data: {
@@ -379,12 +358,10 @@ function createCharts(id, timeframe = "1h", savedView = null) {
                 maintainAspectRatio: false,
                 animation: false,
                 layout: {padding: {right: 8}},
-                // Užuomina rodoma tik pataikius ant žvakės, o ne bet kur toje pačioje X pozicijoje.
                 interaction: {intersect: true, mode: "point"},
                 plugins: {
                     legend: {
                         labels: {
-                            // Paslepiame žvakių „Price“ legendą, bet paliekame SMA įjungimo mygtukus.
                             filter: item => item.datasetIndex !== 0
                         }
                     },
@@ -392,7 +369,6 @@ function createCharts(id, timeframe = "1h", savedView = null) {
                     tooltip: {
                         mode: "point",
                         intersect: true,
-                        // SMA taškai neįtraukiami: užuominoje pateikiamos tik žvakės OHLC reikšmės.
                         filter: item => item.datasetIndex === 0,
                         callbacks: {
                             title(items) {
@@ -416,7 +392,6 @@ function createCharts(id, timeframe = "1h", savedView = null) {
                 }
             }
         }),
-        // Apatinis grafikas: RSI skalėje 0–100 ir pagalbinės 70 bei 30 ribos.
         rsi: new Chart(rsiCanvas, {
             type: "line",
             data: {
@@ -463,7 +438,6 @@ function createCharts(id, timeframe = "1h", savedView = null) {
 
     applyChartTheme(chartInstances[id].price);
     applyChartTheme(chartInstances[id].rsi);
-    // Po automatinio atnaujinimo atkuriamas intervalas; susiejimas tokį pat pritaiko ir RSI.
     if (savedView) {
         const range = savedView.price || savedView.rsi;
         if (range) {
@@ -472,7 +446,6 @@ function createCharts(id, timeframe = "1h", savedView = null) {
     }
 }
 
-// Įsimena pasirinktą intervalą, perkuria grafikus ir pažymi aktyvų mygtuką.
 function changeTimeframe(id, timeframe, button, savedView = null) {
     selectedTimeframes[id] = timeframe;
     createCharts(id, timeframe, savedView);
@@ -481,7 +454,6 @@ function changeTimeframe(id, timeframe, button, savedView = null) {
     });
 }
 
-// Paruošia kortelių vietinį laiką bei grafikus pirmą kartą arba atnaujinus HTML.
 function initializeCards(savedViews = {}) {
     document.querySelectorAll("time[data-local-time]").forEach(element => {
         element.textContent = formatLocalTime(element.dataset.localTime);
@@ -496,16 +468,14 @@ function initializeCards(savedViews = {}) {
     });
 }
 
-// Gauna naują kortelių HTML iš Django, išlaikydama pasirinktus intervalus ir priartinimą.
+// Refresh card HTML while preserving timeframes and zoom.
 async function refreshDashboard() {
-    // Nepradedame lygiagrečios užklausos ir netikriname duomenų, kol kortelė naršyklėje paslėpta.
     if (refreshInProgress || document.hidden) {
         return;
     }
 
     refreshInProgress = true;
     const status = document.getElementById("refresh-status");
-    // Užklausa nutraukiama po 15 sekundžių, kad lėtas atsakymas neužblokuotų vėlesnių bandymų.
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     status.textContent = "Checking for updates...";
@@ -520,7 +490,6 @@ async function refreshDashboard() {
             throw new Error("Dashboard request failed.");
         }
 
-        // Pirma patikriname gautą HTML; blogo atsakymo atveju esamos kortelės lieka ekrane.
         const html = await response.text();
         const page = new DOMParser().parseFromString(html, "text/html");
         const newCards = page.getElementById("instrument-cards");
@@ -528,7 +497,6 @@ async function refreshDashboard() {
             throw new Error("Dashboard response is missing cards.");
         }
 
-        // Prieš pakeisdami DOM išsaugome vaizdą ir atlaisviname senų grafikų išteklius.
         const savedViews = {};
         document.dispatchEvent(new Event("dashboardbeforerefresh"));
         Object.keys(chartInstances).forEach(id => {
@@ -542,7 +510,6 @@ async function refreshDashboard() {
         });
         document.getElementById("instrument-cards").innerHTML = newCards.innerHTML;
         initializeCards(savedViews);
-        // Kainų modulis atkuria naujausias srauto kainas, kad DB HTML jų nepakeistų senesnėmis.
         document.dispatchEvent(new Event("dashboardrefresh"));
         status.textContent = `Checked: ${formatLocalTime(Date.now())}. Auto refresh enabled.`;
     } catch (error) {
@@ -553,19 +520,15 @@ async function refreshDashboard() {
     }
 }
 
-// Pirmas atvaizdavimas ir periodinis DB duomenų tikrinimas kas 60 sekundžių.
-// Tai skaito Django išsaugotus duomenis; rinkos API atskirai kviečia atnaujinimo komanda.
 document.getElementById("time-zone").textContent = localTimeZone;
 initializeCards();
 setInterval(refreshDashboard, 60000);
-// Grįžus į kortelę duomenys patikrinami iškart, nelaukiant kito minutės intervalo.
 document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
         refreshDashboard();
     }
 });
 
-// Pakeitus temą perdažomi esami grafikai, todėl neprarandamas jų priartinimas.
 document.addEventListener("themechange", () => {
     Object.values(chartInstances).forEach(charts => {
         applyChartTheme(charts.price);
@@ -575,7 +538,6 @@ document.addEventListener("themechange", () => {
 
 document.addEventListener("marketcandle", event => receiveLiveCandle(event.detail));
 
-// Filtras gali parodyti anksčiau paslėptą kortelę, todėl jos grafikams perskaičiuojamas dydis.
 document.addEventListener("dashboardfilterchange", () => {
     Object.entries(chartInstances).forEach(([id, charts]) => {
         const item = document.getElementById(`price-chart-${id}`).closest("[data-instrument-item]");

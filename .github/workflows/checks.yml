@@ -1,4 +1,3 @@
-# Tikrinama projekto konfigūracija ir failų sintaksė; produkcinės DB paslapčių nereikia.
 name: Project checks
 
 on:

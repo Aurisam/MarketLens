@@ -1,4 +1,4 @@
-"""Asmeninis naršyklės sąrašas ir vieną kartą serveryje saugoma bendra simbolių istorija."""
+"""Personal browser selections and shared candle storage."""
 
 from datetime import timedelta
 
@@ -22,7 +22,7 @@ ACTIVE_DAYS = 7
 
 
 def get_personal_ids(request):
-    """Perskaito pasirašytą ID sąrašą; pakeistas ar pasibaigęs slapukas laikomas tuščiu sąrašu."""
+    """Read signed instrument IDs; invalid cookies produce an empty list."""
     if request is None:
         return []
     saved = request.get_signed_cookie(COOKIE_NAME, default="", salt=COOKIE_SALT, max_age=COOKIE_AGE)
@@ -38,7 +38,7 @@ def get_personal_ids(request):
 
 
 def set_personal_ids(response, ids):
-    """Sąrašą išsaugo tik šios naršyklės slapuke; registracijos ir vartotojo DB įrašo nereikia."""
+    """Save personal selections in a signed, HttpOnly cookie."""
     value = ",".join(str(instrument_id) for instrument_id in ids)
     response.set_signed_cookie(
         COOKIE_NAME,
@@ -52,7 +52,7 @@ def set_personal_ids(response, ids):
 
 
 def visible_instruments(request=None):
-    """Atrenka bendrus ir šios naršyklės instrumentus; privataus aktyvumą pažymi ne dažniau nei kartą per parą."""
+    """Select public and personal instruments and track daily activity."""
     ids = get_personal_ids(request)
     now = timezone.now()
     Instrument.objects.filter(pk__in=ids, is_public=False).filter(
@@ -62,13 +62,13 @@ def visible_instruments(request=None):
 
 
 def active_instruments():
-    """Periodinė užduotis praleidžia privačius simbolius, kurių niekas neatidarė septynias dienas."""
+    """Skip private instruments unused for seven days."""
     active_since = timezone.now() - timedelta(days=ACTIVE_DAYS)
     return Instrument.objects.filter(Q(is_public=True) | Q(last_requested_at__gte=active_since))
 
 
 def save_candles(instrument, interval, candles):
-    """Atnaujina OHLC be dublikatų; privačiam instrumentui išlaiko tik 100 naujausių vieno intervalo žvakių."""
+    """Upsert candles and retain only the latest 100 per private interval."""
     rows = [Candle(instrument=instrument, interval=interval, **candle) for candle in candles]
     Candle.objects.bulk_create(
         rows,
@@ -83,14 +83,13 @@ def save_candles(instrument, interval, candles):
 
 
 def register_instrument(source, symbol):
-    """Pakartotinai naudoja bendrą registro įrašą arba patikrina platformą ir įrašo pradinę istoriją."""
+    """Reuse an existing symbol or verify and save its initial history."""
     existing = Instrument.objects.filter(data_source=source, symbol__iexact=symbol).first()
     if existing:
         Instrument.objects.filter(pk=existing.pk).update(last_requested_at=timezone.now())
         return existing
     if Instrument.objects.count() >= CATALOG_LIMIT:
         raise ValidationError("The site's instrument capacity is currently full. Existing symbols can still be added.")
-    # Trumpa bendra vieno serverio proceso pauzė riboja kartotines brangias tikrinimo užklausas.
     if not cache.add("instrument-registration-slot", True, timeout=3):
         raise ValidationError("Please wait a few seconds before adding another new symbol.")
     details = get_instrument_details(symbol, source)
@@ -110,11 +109,10 @@ def register_instrument(source, symbol):
             history[interval] = get_instrument_candles(candidate, interval=interval, limit=100, timeout=5)
         except (ValueError, TypeError, KeyError, IndexError, OverflowError):
             history[interval] = []
-        # Neįrašome tuščio instrumento, jei nepavyksta gauti net pagrindinės istorijos.
         if interval == "1h" and not history[interval]:
             raise ValidationError("The source could not load price history. Please try again later.")
     with transaction.atomic():
-        # PostgreSQL užraktas serializuoja pridėjimus, kad keli lankytojai nekurtų to paties simbolio kopijų.
+        # Serialize registrations to avoid duplicate symbols across concurrent requests.
         Instrument.objects.select_for_update().order_by("pk").first()
         existing = Instrument.objects.filter(data_source=source, symbol__iexact=symbol).first()
         if existing:
