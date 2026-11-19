@@ -20,14 +20,9 @@
     }
 
     function formatQuote(quote, source) {
-        if (source === "Binance" || source === "YahooFinance") {
-            const unit = source === "Binance" ? "USDT" : quote.currency;
-            return new Intl.NumberFormat(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 3})
-                .format(quote.price) + " " + unit;
-        }
-        return new Intl.NumberFormat(undefined, {
-            style: "currency", currency: quote.currency, minimumFractionDigits: 2, maximumFractionDigits: 3
-        }).format(quote.price);
+        const unit = source === "Binance" ? "USDT" : quote.currency;
+        return new Intl.NumberFormat(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 3})
+            .format(quote.price) + " " + unit;
     }
 
     function renderCard(card) {
